@@ -3,6 +3,7 @@ import { GameRenderer } from './ui/renderer.js';
 import { InputManager } from './ui/input.js';
 import { Shape, GRID_SIZE } from './engine/types.js';
 import { THEME } from './ui/theme.js';
+import { BlockClearEffect } from './ui/effects.js';
 import { VERSION } from './version.js';
 
 class GameApp {
@@ -277,6 +278,12 @@ class GameApp {
         if (index !== -1 && this.engine.canPlace(this.dragShape, r, c)) {
             const result = this.engine.place(index, r, c);
             if (result.valid) {
+                // Spawn animations for cleared cells
+                if (result.clearedCells && result.clearedCells.length > 0) {
+                    result.clearedCells.forEach(pt => {
+                        this.renderer.addEffect(new BlockClearEffect(pt.r, pt.c));
+                    });
+                }
                 this.updateUI();
             }
         }
@@ -287,10 +294,16 @@ class GameApp {
         this.ghostPos = null;
     }
 
-    loop() {
-        // Redraw every frame or on dirty?
-        // simple PWA: redraw every frame is fine for 60fps
-        
+    lastTime: number = 0;
+
+    loop(timestamp: number) {
+        if (!this.lastTime) this.lastTime = timestamp;
+        const dt = (timestamp - this.lastTime) / 1000;
+        this.lastTime = timestamp;
+
+        // Update animations
+        this.renderer.updateEffects(dt);
+
         // Calculate placeability for each shape in tray
         const placeability = this.engine.currentShapes.map(s => {
              if (!s) return false;

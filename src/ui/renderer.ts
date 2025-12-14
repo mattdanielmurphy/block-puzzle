@@ -1,5 +1,6 @@
 import { GameState, Shape, GRID_SIZE, Point, Grid } from '../engine/types.js';
 import { THEME } from './theme.js';
+import { Effect } from './effects.js';
 
 export interface Layout {
     boardRect: { x: number, y: number, w: number, h: number, cellSize: number };
@@ -12,6 +13,7 @@ export class GameRenderer {
     width: number = 0;
     height: number = 0;
     layout!: Layout;
+    animations: Effect[] = [];
     
     constructor(canvas: HTMLCanvasElement) {
         this.canvas = canvas;
@@ -20,6 +22,21 @@ export class GameRenderer {
         this.ctx = ctx;
         this.resize();
         window.addEventListener('resize', () => this.resize());
+    }
+
+    addEffect(effect: Effect) {
+        this.animations.push(effect);
+    }
+
+    updateEffects(dt: number) {
+        // Update all effects
+        this.animations.forEach(anim => anim.update(dt));
+        // Remove finished effects
+        this.animations = this.animations.filter(anim => !anim.isFinished);
+    }
+
+    drawEffects() {
+        this.animations.forEach(anim => anim.draw(this.ctx, this.layout));
     }
 
     resize() {
@@ -88,6 +105,7 @@ export class GameRenderer {
         this.ctx.fillRect(0, 0, this.width, this.height);
 
         this.drawBoard(state.grid, ghostPos, dragShape);
+        this.drawEffects();
         this.drawTray(state.currentShapes, dragShape, state.currentShapes.indexOf(dragShape), placeability);
         
         if (dragShape && dragPos) {

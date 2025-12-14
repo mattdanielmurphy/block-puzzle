@@ -71,7 +71,7 @@ export class GameEngine {
         if (!shape) throw new Error("Shape index empty");
         
         if (!this.canPlace(shape, boardRow, boardCol)) {
-             return { valid: false, clearedRows: [], clearedCols: [], clearedBoxes: [], pointsAdded: 0, comboMultiplier: 0, gameOver: false }; 
+             return { valid: false, clearedRows: [], clearedCols: [], clearedBoxes: [], clearedCells: [], pointsAdded: 0, comboMultiplier: 0, gameOver: false }; 
         }
 
         // 1. Commit placement
@@ -175,6 +175,10 @@ export class GameEngine {
             clearedRows: rowsToClear,
             clearedCols: colsToClear,
             clearedBoxes: boxesToClear,
+            clearedCells: Array.from(cellsToClear).map(idx => ({
+                r: Math.floor(idx / GRID_SIZE),
+                c: idx % GRID_SIZE
+            })),
             pointsAdded: points,
             comboMultiplier: totalClears,
             gameOver

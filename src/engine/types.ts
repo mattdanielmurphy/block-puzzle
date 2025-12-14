@@ -28,6 +28,7 @@ export interface MoveResult {
     clearedRows: number[];
     clearedCols: number[];
     clearedBoxes: number[];
+    clearedCells: Point[];
     pointsAdded: number;
     comboMultiplier: number;
     gameOver: boolean;
