@@ -4,6 +4,7 @@ export const THEME = {
         boardBackground: '#1e1e24',
         emptyCell: '#2a2a35',
         gridLines: '#121214',
+        subgridLine: '#50505c',
         ghost: 'rgba(255, 255, 255, 0.2)',
         validOverlay: 'rgba(100, 255, 100, 0.3)',
         invalidOverlay: 'rgba(255, 100, 100, 0.3)',

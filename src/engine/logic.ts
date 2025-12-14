@@ -186,10 +186,15 @@ export class GameEngine {
         // Optimization: early exit
         for (const shape of this.currentShapes) {
             if (!shape) continue;
-            for (let r = 0; r < GRID_SIZE; r++) {
-                for (let c = 0; c < GRID_SIZE; c++) {
-                    if (this.canPlace(shape, r, c)) return true;
-                }
+            if (this.canPlaceShape(shape)) return true;
+        }
+        return false;
+    }
+
+    canPlaceShape(shape: Shape): boolean {
+        for (let r = 0; r < GRID_SIZE; r++) {
+            for (let c = 0; c < GRID_SIZE; c++) {
+                if (this.canPlace(shape, r, c)) return true;
             }
         }
         return false;

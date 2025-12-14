@@ -36,11 +36,13 @@ class GameApp {
         this.loadHighScore();
         this.updateUI();
         this.bindControls();
+        this.initSettings();
         
         requestAnimationFrame(this.loop.bind(this));
         
         // Initial render
-        this.renderer.draw(this.engine, null, null, null);
+        const initialPlaceability = this.engine.currentShapes.map(s => s ? this.engine.canPlaceShape(s) : false);
+        this.renderer.draw(this.engine, null, null, null, initialPlaceability);
     }
 
     displayVersion() {
@@ -58,9 +60,43 @@ class GameApp {
             this.restart();
         });
     }
+
+    initSettings() {
+        const settingsBtn = document.getElementById('settings-btn');
+        const modal = document.getElementById('settings-modal');
+        const closeBtn = document.getElementById('close-settings-btn');
+        const slider = document.getElementById('sensitivity-slider') as HTMLInputElement;
+        const valDisplay = document.getElementById('sensitivity-value');
+
+        // Load saved sensitivity
+        const savedSens = localStorage.getItem('bp_sensitivity');
+        const initialSens = savedSens ? parseFloat(savedSens) : 1.5;
+        
+        // Apply
+        this.input.sensitivity = initialSens;
+        if (slider) slider.value = initialSens.toString();
+        if (valDisplay) valDisplay.textContent = initialSens.toFixed(1);
+
+        // Events
+        settingsBtn?.addEventListener('click', () => {
+            modal?.classList.remove('hidden');
+        });
+
+        closeBtn?.addEventListener('click', () => {
+            modal?.classList.add('hidden');
+        });
+
+        slider?.addEventListener('input', (e) => {
+            const val = parseFloat((e.target as HTMLInputElement).value);
+            this.input.sensitivity = val;
+            if (valDisplay) valDisplay.textContent = val.toFixed(1);
+            localStorage.setItem('bp_sensitivity', val.toString());
+        });
+    }
     
     restart() {
         this.engine = new GameEngine(Date.now());
+        this.loadHighScore(); // Load high score into the new engine
         this.dragShape = null;
         this.dragPos = null;
         document.getElementById('game-over-overlay')?.classList.add('hidden');
@@ -254,7 +290,14 @@ class GameApp {
     loop() {
         // Redraw every frame or on dirty?
         // simple PWA: redraw every frame is fine for 60fps
-        this.renderer.draw(this.engine, this.dragShape, this.dragPos, this.ghostPos);
+        
+        // Calculate placeability for each shape in tray
+        const placeability = this.engine.currentShapes.map(s => {
+             if (!s) return false;
+             return this.engine.canPlaceShape(s);
+        });
+
+        this.renderer.draw(this.engine, this.dragShape, this.dragPos, this.ghostPos, placeability);
         requestAnimationFrame(this.loop.bind(this));
     }
 }

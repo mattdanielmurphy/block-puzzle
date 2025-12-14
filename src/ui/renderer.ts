@@ -82,13 +82,13 @@ export class GameRenderer {
         ];
     }
 
-    draw(state: GameState, dragShape: Shape | null, dragPos: {x:number, y:number} | null, ghostPos: {r:number, c:number} | null) {
+    draw(state: GameState, dragShape: Shape | null, dragPos: {x:number, y:number} | null, ghostPos: {r:number, c:number} | null, placeability: boolean[] | null) {
         // Clear
         this.ctx.fillStyle = THEME.colors.background;
         this.ctx.fillRect(0, 0, this.width, this.height);
 
         this.drawBoard(state.grid, ghostPos, dragShape);
-        this.drawTray(state.currentShapes, dragShape, state.currentShapes.indexOf(dragShape));
+        this.drawTray(state.currentShapes, dragShape, state.currentShapes.indexOf(dragShape), placeability);
         
         if (dragShape && dragPos) {
             this.drawShapeAtPixels(dragShape, dragPos.x, dragPos.y, this.layout.boardRect.cellSize * 1.0); 
@@ -119,6 +119,26 @@ export class GameRenderer {
             }
         }
 
+        // Draw Subdivision Lines
+        this.ctx.strokeStyle = THEME.colors.subgridLine;
+        this.ctx.lineWidth = 4;
+        this.ctx.beginPath();
+        
+        // Vertical lines (after col 2 and 5)
+        for (let c = 3; c < GRID_SIZE; c += 3) {
+             const cx = x + c * (cellSize + gap) - gap/2;
+             this.ctx.moveTo(cx, y);
+             this.ctx.lineTo(cx, y + GRID_SIZE * (cellSize + gap) - gap);
+        }
+
+        // Horizontal lines (after row 2 and 5)
+        for (let r = 3; r < GRID_SIZE; r += 3) {
+             const cy = y + r * (cellSize + gap) - gap/2;
+             this.ctx.moveTo(x, cy);
+             this.ctx.lineTo(x + GRID_SIZE * (cellSize + gap) - gap, cy);
+        }
+        this.ctx.stroke();
+
         // Draw Ghost
         if (ghostPos && dragShape) {
             this.ctx.fillStyle = THEME.colors.ghost;
@@ -143,15 +163,22 @@ export class GameRenderer {
         }
     }
 
-    drawTray(shapes: (Shape | null)[], draggingShape: Shape | null, draggingIndex: number) {
+    drawTray(shapes: (Shape | null)[], draggingShape: Shape | null, draggingIndex: number, placeability: boolean[] | null) {
         const { shapecenters } = this.layout.trayRect;
         const cellSize = this.layout.boardRect.cellSize * 0.6; // Smaller in tray
 
         shapes.forEach((shape, i) => {
             if (shape && shape !== draggingShape) {
                 const center = shapecenters[i];
+                
+                // Opacity if not placeable
+                const isPlaceable = placeability ? placeability[i] : true;
+                this.ctx.globalAlpha = isPlaceable ? 1.0 : 0.3;
+                
                 // Center the shape
                 this.drawShapeCentered(shape, center.x, center.y, cellSize);
+                
+                this.ctx.globalAlpha = 1.0;
             }
         });
     }
