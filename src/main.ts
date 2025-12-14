@@ -14,7 +14,7 @@ class GameApp {
     // State for UI
     dragShape: Shape | null = null;
     dragPos: {x:number, y:number} | null = null;
-    dragPos: {x:number, y:number} | null = null;
+
     ghostPos: {r:number, c:number} | null = null;
     
     // Snap settings

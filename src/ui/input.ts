@@ -25,6 +25,8 @@ export class InputManager {
     events: InputEvents;
     dragState: DragState | null = null;
     
+    public sensitivity: number = 1.5;
+
     constructor(canvas: HTMLCanvasElement, renderer: GameRenderer, events: InputEvents) {
         this.canvas = canvas;
         this.renderer = renderer;
@@ -81,7 +83,7 @@ export class InputManager {
                      startY: y,
                      currentX: x,
                      currentY: y,
-                     // We want the shape to appear under the finger.
+                     // We want the shape to appear under the finger initially.
                      // The visual center is `center`. Finger is at `x,y`.
                      touchOffsetX: center.x - x,
                      touchOffsetY: center.y - y
@@ -90,6 +92,7 @@ export class InputManager {
                  this.events.onDragStart(index);
                  
                  // Immediate move to set initial position and prevent disappearance frame
+                 // Initial move is 1:1, delta is 0
                  const visualX = x + this.dragState.touchOffsetX;
                  const visualY = y + this.dragState.touchOffsetY;
                  this.events.onDragMove(visualX, visualY);
@@ -108,14 +111,18 @@ export class InputManager {
         this.dragState.currentX = x;
         this.dragState.currentY = y;
 
-        // Report visual position (anchor position)
-        // Visual Anchor = Finger + Offset - (Center-to-Anchor)
-        // Actually, renderer draws centered in tray. 
-        // When dragging, we usually want finger to be over the "center of mass" or just absolute.
-        // Let's say we want the relative position preserved.
+        // Apply sensitivity to the DELTA from start
+        // Delta = (CurrentFinger - StartFinger) * sensitivity
+        const deltaX = (x - this.dragState.startX) * this.sensitivity;
+        const deltaY = (y - this.dragState.startY) * this.sensitivity;
+
+        // Visual Position = StartFinger + Offset + Delta
+        // (StartFinger + Offset) was the original center position of the shape
+        const originX = this.dragState.startX + this.dragState.touchOffsetX;
+        const originY = this.dragState.startY + this.dragState.touchOffsetY;
         
-        const visualX = x + this.dragState.touchOffsetX; 
-        const visualY = y + this.dragState.touchOffsetY;
+        const visualX = originX + deltaX;
+        const visualY = originY + deltaY;
 
         this.events.onDragMove(visualX, visualY);
     }
@@ -132,8 +139,15 @@ export class InputManager {
         const gap = THEME.metrics.cellGap;
         const cellSize = boardRect.cellSize + gap;
         
-        const visualX = this.dragState.currentX + this.dragState.touchOffsetX;
-        const visualY = this.dragState.currentY + this.dragState.touchOffsetY;
+        // Calculate final visual position using same sensitivity logic
+        const deltaX = (this.dragState.currentX - this.dragState.startX) * this.sensitivity;
+        const deltaY = (this.dragState.currentY - this.dragState.startY) * this.sensitivity;
+        
+        const originX = this.dragState.startX + this.dragState.touchOffsetX;
+        const originY = this.dragState.startY + this.dragState.touchOffsetY;
+
+        const visualX = originX + deltaX;
+        const visualY = originY + deltaY;
         
         // Inverse transform
         // visualX = boardX + c * cellSize -> c = (visualX - boardX) / cellSize
