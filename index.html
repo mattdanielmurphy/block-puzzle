@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Block Puzzle</title>
+    <meta name="description" content="Offline Block Sudoku Puzzle Game">
+    <link rel="stylesheet" href="styles.css">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#1a1a1a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+</head>
+<body>
+    <div id="app">
+        <header>
+            <div class="score-board">
+                <div class="score-label">BEST <span id="best-score">0</span></div>
+                <div class="score-label">SCORE <span id="current-score">0</span></div>
+            </div>
+            <button id="reset-btn" aria-label="Reset Game">↺</button>
+        </header>
+
+        <main id="game-container">
+            <canvas id="game-canvas"></canvas>
+            <div id="game-over-overlay" class="hidden">
+                <h1>Game Over</h1>
+                <p>Final Score: <span id="final-score">0</span></p>
+                <button id="restart-btn">Try Again</button>
+            </div>
+        </main>
+        
+        <footer>
+            <span id="app-version"></span>
+        </footer>
+    </div>
+    <script type="module" src="dist/src/main.js"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                // Register the Development Service Worker
+                // We add a timestamp to the URL to ensure the SW file itself is never cached
+                navigator.serviceWorker.register('service-worker.js?v=' + Date.now())
+                    .then(registration => {
+                        console.log('Dev ServiceWorker registered: ', registration);
+                    })
+                    .catch(registrationError => {
+                        console.log('Dev ServiceWorker registration failed: ', registrationError);
+                    });
+            });
+        }
+    </script>
+</body>
+</html>
