@@ -5,6 +5,7 @@
   "author": "Matthew Murphy",
   "license": "MIT",
   "private": true,
+  "homepage": "/blocks",
   "scripts": {
     "build": "node build.js",
     "start": "npm run build && npx http-server dist -c-1 -p 8000"

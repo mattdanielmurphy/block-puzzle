@@ -8,11 +8,17 @@ const ASSETS_TO_COPY = [
     { src: 'index.html', dest: 'index.html', transform: true },
     { src: 'styles.css', dest: 'styles.css' },
     { src: 'manifest.json', dest: 'manifest.json' },
-    { src: 'service-worker.js', dest: 'service-worker.js' },
+    { src: 'service-worker.js', dest: 'service-worker.js', transform: true },
     { src: 'assets', dest: 'assets', isDir: true }
 ];
 
+const packageJson = require('./package.json');
+const homepage = packageJson.homepage || '';
+
 console.log('Build started...');
+if (homepage) {
+    console.log(`Using homepage base path: ${homepage}`);
+}
 
 // 1. Clean dist (optional, but tsc doesn't clear it)
 // We won't strictly delete it to be safe, but tsc overwrites.
@@ -45,12 +51,23 @@ ASSETS_TO_COPY.forEach(item => {
         // Recursive copy for directories
         fs.cpSync(sourcePath, destPath, { recursive: true });
     } else {
-        if (item.transform && item.src === 'index.html') {
-            // Special handling for index.html
+        if (item.transform) {
             let content = fs.readFileSync(sourcePath, 'utf8');
             
-            // Fix script path: "dist/src/main.js" -> "src/main.js"
-            content = content.replace('src="dist/src/main.js"', 'src="src/main.js"');
+            if (item.src === 'index.html') {
+                // Fix script path: "dist/src/main.js" -> "src/main.js"
+                content = content.replace('src="dist/src/main.js"', 'src="src/main.js"');
+                
+                // Inject base tag if homepage is set
+                if (homepage) {
+                    const baseTag = `<base href="${homepage.endsWith('/') ? homepage : homepage + '/'}">`;
+                    content = content.replace('<head>', `<head>\n    ${baseTag}`);
+                }
+            } else if (item.src === 'service-worker.js') {
+                // Fix paths: "./dist/src/..." -> "./src/..."
+                // utilizing a global regex to replace all occurrences
+                content = content.replace(/\.\/dist\/src\//g, './src/');
+            }
             
             fs.writeFileSync(destPath, content);
         } else {
