@@ -498,7 +498,8 @@ class GameApp {
         this.replayPlayer = new ReplayPlayer(replayState, this.renderer);
         this.isInReplayMode = true;
         
-        // Hide game over overlay, show replay overlay
+        // Hide game over overlay and HEADER, show replay overlay
+        document.querySelector('header')?.classList.add('hidden');
         document.getElementById('game-over-overlay')?.classList.add('hidden');
         document.getElementById('replay-overlay')?.classList.remove('hidden');
         
@@ -518,8 +519,9 @@ class GameApp {
         
         this.isInReplayMode = false;
         
-        // Hide replay overlay, show game over overlay
+        // Hide replay overlay, show game over overlay and restore HEADER
         document.getElementById('replay-overlay')?.classList.add('hidden');
+        document.querySelector('header')?.classList.remove('hidden');
         document.getElementById('game-over-overlay')?.classList.remove('hidden');
     }
     
