@@ -1,45 +1,54 @@
-"use strict";
-// DEVELOPMENT SERVICE WORKER
-// This service worker is designed to force network requests for everything, ensuring you always see the latest version.
-
-const CACHE_NAME = 'block-puzzle-dev-v1';
+const CACHE_NAME = 'block-puzzle-v1';
+const ASSETS = [
+    './',
+    './index.html',
+    './styles.css',
+    './manifest.json',
+    './dist/src/main.js',
+    './dist/src/engine/logic.js',
+    './dist/src/engine/replay.js',
+    './dist/src/engine/rng.js',
+    './dist/src/engine/shapes.js',
+    './dist/src/engine/types.js',
+    './dist/src/ui/effects.js',
+    './dist/src/ui/input.js',
+    './dist/src/ui/renderer.js',
+    './dist/src/ui/replay-player.js',
+    './dist/src/ui/theme.js',
+    './dist/src/ui/tutorial.js',
+    './dist/src/version.js'
+];
 
 self.addEventListener('install', (event) => {
-    // Force immediate activation
-    self.skipWaiting();
-});
-
-self.addEventListener('activate', (event) => {
-    // Delete all old caches just in case
     event.waitUntil(
-        caches.keys().then((keys) => {
-            return Promise.all(
-                keys.map((key) => caches.delete(key))
-            );
-        }).then(() => {
-            // Take control of all clients immediately
-            return self.clients.claim();
+        caches.open(CACHE_NAME).then(cache => {
+            console.log('Caching app shell');
+            return cache.addAll(ASSETS);
         })
     );
 });
 
-self.addEventListener('fetch', (event) => {
-    // Determine if it's a mutation request
-    if (event.request.method !== 'GET') {
-        return;
-    }
+self.addEventListener('activate', (event) => {
+    event.waitUntil(
+        caches.keys().then(keys => Promise.all(
+            keys.map(key => {
+                if (key !== CACHE_NAME) {
+                    console.log('Deleting old cache:', key);
+                    return caches.delete(key);
+                }
+            })
+        ))
+    );
+});
 
-    // Network Only Strategy
-    // We intentionally do NOT match in cache.
-    // If offline, this will fail, but that's acceptable for local dev iteration.
+self.addEventListener('fetch', (event) => {
     event.respondWith(
-        fetch(event.request, { 
-            cache: 'no-store' // Tell the browser/server we don't want cached responses
-        }).catch((error) => {
-            console.error('Network fetch failed', error);
-            // Optional: fallback to cache if you really want some offline cap during dev, 
-            // but for "always latest version" requirements, failure is better than stale.
-            return new Response('Offline - Connect to network for Dev Mode', { status: 503 });
+        caches.match(event.request).then(response => {
+            // Cache hit - return response
+            if (response) {
+                return response;
+            }
+            return fetch(event.request);
         })
     );
 });

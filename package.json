@@ -1,4 +1,14 @@
 {
+  "name": "block-puzzle",
+  "version": "0.1.0",
+  "description": "Offline Block Puzzle Game",
+  "author": "Matthew Murphy",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "start": "npm run build && npx http-server . -c-1 -p 8000"
+  },
   "dependencies": {
     "typescript": "^5.9.3"
   }

@@ -17,16 +17,30 @@
             <button id="settings-btn" aria-label="Settings">⚙️</button>
             <div class="score-board">
                 <div class="score-label">BEST <span id="best-score">0</span></div>
+                <div id="status-face" class="face-normal"></div>
                 <div class="score-label">SCORE <span id="current-score">0</span></div>
             </div>
             <button id="reset-btn" aria-label="Reset Game">↺</button>
         </header>
+
+        <div id="tutorial-overlay" class="hidden overlay pointer-events-none">
+            <div class="tutorial-box pointer-events-auto">
+                    <h2 id="tutorial-title">How to Play</h2>
+                    <p id="tutorial-text">Welcome! Drag blocks to the grid.</p>
+                <!-- Action Buttons Container -->
+                <div class="tutorial-actions">
+                    <button id="tutorial-next-btn" class="primary-btn">Next</button>
+                    <button id="tutorial-skip-btn" class="secondary-btn">Skip</button>
+                </div>
+            </div>
+        </div>
 
         <main id="game-container">
             <canvas id="game-canvas"></canvas>
             <div id="game-over-overlay" class="hidden overlay">
                 <h1>Game Over</h1>
                 <p>Final Score: <span id="final-score">0</span></p>
+                <button id="replay-btn">▶ Replay Game</button>
                 <button id="restart-btn">Try Again</button>
             </div>
             <div id="settings-modal" class="hidden overlay">
@@ -36,7 +50,20 @@
                         <label for="sensitivity-slider">Sensitivity: <span id="sensitivity-value">1.5</span></label>
                         <input type="range" id="sensitivity-slider" min="1.0" max="3.0" step="0.1" value="1.5">
                     </div>
+                    <div class="setting-item" style="margin-top: 20px; border-top: 1px solid #333; padding-top: 15px;">
+                        <button id="clear-cache-btn" class="secondary-btn" style="width: 100%; border: 1px solid #ff4444; color: #ff4444;">Clear Cache & Reload</button>
+                    </div>
                     <button id="close-settings-btn">Close</button>
+                </div>
+            </div>
+            <div id="replay-overlay" class="hidden overlay">
+                <div class="replay-controls">
+                    <h2>Replaying Game...</h2>
+                    <div class="replay-info">
+                        <span>Move: <span id="replay-move">0</span> / <span id="replay-total">0</span></span>
+                        <span>Score: <span id="replay-score">0</span></span>
+                    </div>
+                    <button id="replay-exit">Exit Replay</button>
                 </div>
             </div>
         </main>

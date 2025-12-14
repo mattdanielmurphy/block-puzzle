@@ -1,6 +1,7 @@
 import { Grid, Shape, Point, MoveResult, GRID_SIZE, GameState } from './types.js';
 import { ALL_SHAPES } from './shapes.js';
 import { RNG } from './rng.js';
+import { ReplayManager } from './replay.js';
 
 export class GameEngine {
     grid: Grid;
@@ -12,12 +13,14 @@ export class GameEngine {
     seed: number;
     moves: number = 0;
     rng: RNG;
+    replayManager: ReplayManager;
 
     constructor(seed: number = Date.now()) {
         this.grid = new Array(GRID_SIZE * GRID_SIZE).fill(0);
         this.score = 0;
         this.seed = seed; // Store seed
         this.rng = new RNG(seed);
+        this.replayManager = new ReplayManager(seed);
         this.currentShapes = [];
         this.refillShapes();
     }
@@ -169,6 +172,17 @@ export class GameEngine {
         this.isGameOver = gameOver; // Update state
 
         this.moves++; // Increment moves
+        
+        // Record move for replay
+        this.replayManager.recordMove(
+            shape,
+            boardRow,
+            boardCol,
+            this.score,
+            rowsToClear,
+            colsToClear,
+            boxesToClear
+        );
 
         return {
             valid: true,
@@ -202,5 +216,24 @@ export class GameEngine {
             }
         }
         return false;
+    }
+    setGrid(newGrid: Grid) {
+        this.grid = [...newGrid];
+    }
+
+    setShapes(newShapes: (Shape | null)[]) {
+        this.currentShapes = [...newShapes];
+    }
+
+    reset(seed: number = Date.now()) {
+        this.seed = seed;
+        this.rng = new RNG(seed);
+        this.replayManager = new ReplayManager(seed);
+        this.grid = new Array(GRID_SIZE * GRID_SIZE).fill(0);
+        this.score = 0;
+        this.currentShapes = [];
+        this.refillShapes();
+        this.isGameOver = false;
+        this.moves = 0;
     }
 }

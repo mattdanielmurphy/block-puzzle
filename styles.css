@@ -46,12 +46,14 @@ header {
     justify-content: space-between;
     align-items: center;
     padding: 16px;
-    height: 80px;
+    min-height: 80px;
+    height: auto;
 }
 
 .score-board {
     display: flex;
-    gap: 20px;
+    gap: 12px;
+    align-items: center;
 }
 
 .score-label {
@@ -66,6 +68,47 @@ header {
     font-size: 1.5rem;
     color: #fff;
     margin-top: 4px;
+}
+
+#status-face {
+    width: 96px;
+    height: 96px;
+    background-image: url('assets/faces.jpg');
+    background-repeat: no-repeat;
+    /* Horizontal sprite strip with 6 faces.
+       600% width = show 1/6 of the width (one face).
+       100% height = fill the entire height. */
+    background-size: 600% 100%;
+    image-rendering: pixelated;
+    border-radius: 4px;
+    background-color: #000;
+    box-shadow: 0 0 4px #000;
+    border: 2px solid #333;
+}
+
+/* Horizontal positions for each of the 6 faces */
+.face-normal {
+    background-position: 0% 0%;
+}
+
+.face-concerned {
+    background-position: 20% 0%;
+}
+
+.face-worried {
+    background-position: 40% 0%;
+}
+
+.face-panic {
+    background-position: 60% 0%;
+}
+
+.face-relief {
+    background-position: 80% 0%;
+}
+
+.face-dead {
+    background-position: 100% 0%;
 }
 
 #reset-btn,
@@ -120,6 +163,7 @@ canvas {
 }
 
 #restart-btn,
+#replay-btn,
 #close-settings-btn {
     margin-top: 30px;
     padding: 12px 30px;
@@ -130,6 +174,11 @@ canvas {
     border-radius: 25px;
     font-weight: bold;
     cursor: pointer;
+}
+
+#replay-btn {
+    background: #4caf50;
+    margin-right: 10px;
 }
 
 /* Settings Modal Specifics */
@@ -220,4 +269,241 @@ input[type=range]:focus::-webkit-slider-thumb {
 
 input[type=range]:active::-webkit-slider-thumb {
     transform: scale(1.1);
+}
+
+/* Replay Controls */
+.replay-controls {
+    background: var(--board-bg);
+    padding: 30px;
+    border-radius: 12px;
+    width: 90%;
+    max-width: 500px;
+    text-align: center;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+.replay-controls h2 {
+    margin-top: 0;
+    margin-bottom: 20px;
+    color: var(--text-color);
+}
+
+.replay-info {
+    display: flex;
+    justify-content: space-around;
+    margin-bottom: 20px;
+    font-size: 1.1rem;
+    color: #ccc;
+}
+
+.replay-info span {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.replay-info span span {
+    font-size: 1.5rem;
+    color: #fff;
+    font-weight: bold;
+}
+
+#replay-exit {
+    margin-top: 20px;
+    padding: 12px 30px;
+    font-size: 1.1rem;
+    background: var(--danger-color);
+    color: white;
+    border: none;
+    border-radius: 25px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+#replay-exit:hover {
+    background: #ff6b7a;
+}
+
+footer {
+    text-align: center;
+    padding: 10px;
+    font-size: 0.8rem;
+    color: #666;
+}
+
+/* Tutorial Styles */
+.pointer-events-none {
+    pointer-events: none;
+}
+
+.pointer-events-auto {
+    pointer-events: auto;
+}
+
+#tutorial-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    /* Default centered for full overlay */
+    flex-direction: column;
+    justify-content: center;
+    /* Center vertically for Intro/End */
+    background: transparent !important;
+    backdrop-filter: none !important;
+    pointer-events: none;
+    z-index: 20;
+    padding-top: 0;
+    /* Let flex handle centering */
+    transition: all 0.3s ease;
+}
+
+#tutorial-overlay.scenario-mode {
+    position: relative;
+    /* Takes up space in the main column layout */
+    top: 10px;
+    left: auto;
+    right: auto;
+    bottom: auto;
+    height: auto;
+    margin: 0;
+    background: transparent !important;
+    display: block;
+    /* Normal block flow to fill width */
+    padding: 0;
+    min-height: 128px;
+    /* Force height reservation to push grid down */
+}
+
+.tutorial-box {
+    background: rgba(30, 30, 36, 0.95);
+    padding: 20px;
+    border-radius: 12px;
+    text-align: center;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    width: 350px;
+    max-width: 90%;
+    margin: 0 auto;
+    border: 1px solid var(--accent-color);
+    backdrop-filter: blur(10px);
+    transition: all 0.3s;
+    /* Default Flex Column for Intro/End */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 15px;
+}
+
+/* Scenario Mode (Header Replacement) */
+.scenario-mode .tutorial-box {
+    width: 100%;
+    max-width: 600px;
+    /* Match app width constraint */
+    border-radius: 12px;
+    padding: 10px 20px;
+    min-height: 80px;
+
+    /* Layout: Keep main content left, button right */
+    display: flex;
+    /* flex-direction: row; */
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+
+    background: var(--board-bg);
+    border: none;
+    border-bottom: 1px solid #333;
+    padding-bottom: 10px;
+}
+
+/* Wrapper for Title + Paragraph to keep them stacked */
+.tutorial-content-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    /* Left align text */
+    text-align: left;
+    gap: 2px;
+    /* Small gap between title and text */
+}
+
+.scenario-mode .tutorial-box h2 {
+    font-size: 1.1rem;
+    margin: 0;
+    color: var(--accent-color);
+}
+
+.scenario-mode .tutorial-box p {
+    font-size: 1rem;
+    margin: 0;
+    color: #ccc;
+    line-height: 1.2;
+}
+
+/* Default H2/P styles (Intro/End) */
+.tutorial-box h2 {
+    margin: 0;
+    font-size: 1.5rem;
+    color: var(--accent-color);
+}
+
+.tutorial-box p {
+    margin: 0;
+    font-size: 1.1rem;
+    line-height: 1.4;
+    color: #eee;
+}
+
+.tutorial-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 15px;
+}
+
+.scenario-mode .tutorial-actions {
+    margin: 0;
+}
+
+.primary-btn {
+    background: var(--accent-color);
+    border: none;
+    color: white;
+    padding: 8px 20px;
+    border-radius: 20px;
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 0.9rem;
+}
+
+.primary-btn:hover {
+    filter: brightness(1.1);
+}
+
+.scenario-mode .tutorial-box .secondary-btn,
+.scenario-mode .tutorial-box .primary-btn {
+    margin: 0;
+    padding: 6px 12px;
+    font-size: 0.8rem;
+    white-space: nowrap;
+}
+
+.secondary-btn {
+    background: transparent;
+    border: 1px solid #666;
+    color: #aaa;
+    /* padding: 8px 16px; */
+    padding: 8px 20px;
+    border-radius: 20px;
+    /* margin-top: 15px; */
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: all 0.2s;
+}
+
+.secondary-btn:hover {
+    border-color: #fff;
+    color: #fff;
+    background: rgba(255, 255, 255, 0.1);
 }
