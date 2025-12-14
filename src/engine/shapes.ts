@@ -1,46 +1,158 @@
-import { Shape, Point } from './types.js';
+import { Shape } from './types.js';
 
-// Helper to create shapes easily structure: [r, c] pairs
-function createShape(id: string, colorId: number, coords: number[][]): Shape {
-    return {
-        id,
-        colorId,
-        cells: coords.map(([r, c]) => ({ r, c }))
-    };
+// Parse a list of ASCII art strings into Shape objects
+function parseShapes(arts: string[]): Shape[] {
+    return arts.map((art, index) => {
+        const coords: number[][] = [];
+        let lines = art.split('\n');
+        
+        // Remove empty leading/trailing lines
+        while (lines.length > 0 && lines[0].trim().length === 0) lines.shift();
+        while (lines.length > 0 && lines[lines.length - 1].trim().length === 0) lines.pop();
+
+        if (lines.length === 0) return { id: `shape_${index}`, colorId: 1, cells: [] };
+
+        // Calculate minimum indentation
+        let minIndent = Infinity;
+        for (const line of lines) {
+            if (line.trim().length === 0) continue;
+            const match = line.match(/^ */);
+            const indent = match ? match[0].length : 0;
+            if (indent < minIndent) minIndent = indent;
+        }
+        if (minIndent === Infinity) minIndent = 0;
+
+        // Extract coordinates
+        for (let r = 0; r < lines.length; r++) {
+            const line = lines[r];
+            if (line.length < minIndent) continue;
+            
+            const content = line.substring(minIndent);
+            for (let c = 0; c < content.length; c++) {
+                if (content[c] === '#' || content[c] === 'X') {
+                    coords.push([r, c]);
+                }
+            }
+        }
+
+        // Auto-assign color based on size (1..5)
+        // 1: Blue, 2: Green, 3: Yellow, 4: Orange, 5: Red
+        const size = coords.length;
+        const colorId = Math.max(1, Math.min(5, size));
+
+        return {
+            id: `shape_${index}_${size}`,
+            colorId,
+            cells: coords.map(([r, c]) => ({ r, c }))
+        };
+    });
 }
 
-// Basic set of shapes logic
-// 1. Single
-const S1 = createShape('1x1', 1, [[0,0]]);
+// Define all shapes here using ASCII art
+// Colors are automatically assigned based on the number of blocks (#)
+// IDs are automatically generated
+const SHAPE_DEFS = [
+    // 1. Single
+    `
+    #
+    `,
 
-// 2. Dominoes
-const S2_H = createShape('2x1', 2, [[0,0], [0,1]]);
-const S2_V = createShape('1x2', 2, [[0,0], [1,0]]);
+    // 2. Dominoes
+    `
+    ##
+    `,
+    `
+    #
+    #
+    `,
 
-// 3. Trominoes
-const S3_H = createShape('3x1', 3, [[0,0], [0,1], [0,2]]);
-const S3_V = createShape('1x3', 3, [[0,0], [1,0], [2,0]]);
-const S3_L = createShape('L3', 3, [[0,0], [1,0], [1,1]]); // Corner
+    // 3. Trominoes
+    `
+    ###
+    `,
+    `
+    #
+    #
+    #
+    `,
+    `
+    #
+    ##
+    `,
 
-// 4. Tetrominoes
-const S4_H = createShape('4x1', 4, [[0,0], [0,1], [0,2], [0,3]]);
-const S4_V = createShape('1x4', 4, [[0,0], [1,0], [2,0], [3,0]]);
-const S4_SQ = createShape('2x2', 4, [[0,0], [0,1], [1,0], [1,1]]);
-// L-shapes
-const S4_L1 = createShape('L4_1', 4, [[0,0], [1,0], [2,0], [2,1]]); 
+    // 4. Tetrominoes
+    `
+    ####
+    `,
+    `
+    #
+    #
+    #
+    #
+    `,
+    `
+    ##
+    ##
+    `,
+    `
+    #
+    #
+    ##
+    `,
 
-// 5. Pentominoes (Selected subset to avoid frustration)
-const S5_H = createShape('5x1', 5, [[0,0], [0,1], [0,2], [0,3], [0,4]]);
-const S5_V = createShape('1x5', 5, [[0,0], [1,0], [2,0], [3,0], [4,0]]);
-const S5_SQ_PLUS = createShape('3x3_L', 5, [[0,0], [0,1], [0,2], [1,0], [2,0]]); // Big corner
+    // 5. Pentominoes
+    `
+    #####
+    `,
+    `
+    #
+    #
+    #
+    #
+    #
+    `,
+    `
+    ###
+    #
+    #
+    `,
 
-export const ALL_SHAPES = [
-    S1, 
-    S2_H, S2_V, 
-    S3_H, S3_V, S3_L,
-    S4_H, S4_V, S4_SQ, S4_L1,
-    S5_H, S5_V, S5_SQ_PLUS
+    // Diagonals (2-long)
+    `
+    #
+     #
+    `,
+    `
+     #
+    #
+    `,
+
+    // Diagonals (3-long)
+    `
+    #
+     #
+      #
+    `,
+    `
+      #
+     #
+    #
+    `,
+
+    // Special Shapes
+    `
+    # #
+    ###
+    `,
+    `
+    ###
+     #
+    `,
+    `
+     # 
+    ###
+     # 
+    `
 ];
 
-// Simple color mapping
-// 1: Blue, 2: Green, 3: Yellow, 4: Orange, 5: Red
+export const ALL_SHAPES = parseShapes(SHAPE_DEFS);
