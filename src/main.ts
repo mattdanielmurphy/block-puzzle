@@ -66,10 +66,10 @@ class GameApp {
         this.lastPlaceability = initialPlaceability; // Init state
         this.renderer.draw(this.engine, null, null, null, initialPlaceability);
 
-        // Start Tutorial (For testing: always start)
-        // if (!localStorage.getItem('bp_tutorial_completed')) {
+        // Start Tutorial if not completed
+        if (!localStorage.getItem('bp_tutorial_completed')) {
             this.tutorialManager.start();
-        // }
+        }
     }
 
     displayVersion() {
@@ -146,12 +146,8 @@ class GameApp {
                     await Promise.all(keys.map(key => caches.delete(key)));
                 }
 
-                // 3. Clear Local Storage (Optional, maybe user wants to keep scores? 
-                // The request said "clear the cache and force refresh from the server".
-                // Often "Clear Cache" implies resetting the app state too, but maybe high scores should stay?
-                // The prompt says "completely clear the cache and force refresh... for development purposes".
-                // This usually implies assets/code. Keeping local storage ensures testing persistence.
-                // I will NOT clear localStorage unless explicitly asked, as that holds scores/tutorial state.
+                // 3. Clear Local Storage (Reset game state completely)
+                localStorage.clear();
                 
                 // 4. Force Reload
                 window.location.reload();

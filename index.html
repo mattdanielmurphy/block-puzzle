@@ -35,13 +35,26 @@
             </div>
         </div>
 
+        <div id="replay-overlay" class="hidden overlay">
+            <div class="replay-controls">
+                <div class="replay-header">
+                    <h2>Replaying Game</h2>
+                    <div class="replay-stats">
+                        <span>Move: <span id="replay-move">0</span>/<span id="replay-total">0</span></span>
+                        <span>Score: <span id="replay-score">0</span></span>
+                    </div>
+                </div>
+                <button id="replay-exit" class="secondary-btn">Exit</button>
+            </div>
+        </div>
+
         <main id="game-container">
             <canvas id="game-canvas"></canvas>
             <div id="game-over-overlay" class="hidden overlay">
                 <h1>Game Over</h1>
                 <p>Final Score: <span id="final-score">0</span></p>
-                <button id="replay-btn">▶ Replay Game</button>
                 <button id="restart-btn">Try Again</button>
+                <button id="replay-btn">▶ Replay Game</button>
             </div>
             <div id="settings-modal" class="hidden overlay">
                 <div class="modal-content">
@@ -56,16 +69,7 @@
                     <button id="close-settings-btn">Close</button>
                 </div>
             </div>
-            <div id="replay-overlay" class="hidden overlay">
-                <div class="replay-controls">
-                    <h2>Replaying Game...</h2>
-                    <div class="replay-info">
-                        <span>Move: <span id="replay-move">0</span> / <span id="replay-total">0</span></span>
-                        <span>Score: <span id="replay-score">0</span></span>
-                    </div>
-                    <button id="replay-exit">Exit Replay</button>
-                </div>
-            </div>
+
         </main>
         
         <footer>
