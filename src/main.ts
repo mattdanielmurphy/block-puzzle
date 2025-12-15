@@ -34,6 +34,8 @@ class GameApp {
 	private lastPlaceability: boolean[] = []
 	private reliefUntil: number = 0
 	private wasInPanicState: boolean = false
+	private timerPanic: boolean = false
+	private handTimerRatio: number | null = null
 
 	// Replay State
 	private replayPlayer: ReplayPlayer | null = null
@@ -41,6 +43,13 @@ class GameApp {
 
 	// Tutorial State
 	tutorialManager: TutorialManager
+
+	// Pause & timers
+	private isPaused: boolean = false
+	private pauseStartedAt: number | null = null
+	private readonly HAND_TIME_LIMIT_MS = 10000
+	private handDeadline: number | null = null
+	private lastHandGeneration: number = -1
 
 	constructor() {
 		this.displayVersion()
@@ -87,20 +96,32 @@ class GameApp {
 		this.initSettings()
 
 		// Init Tutorial
-		this.tutorialManager = new TutorialManager(this.engine, this.renderer, () => {
-			if (!this.engine.isGameOver) this.restart()
-		})
+		this.tutorialManager = new TutorialManager(
+			this.engine,
+			this.renderer,
+			() => {
+				if (!this.engine.isGameOver) this.restart()
+			},
+			() => {
+				// Start timer when tutorial ends
+				this.syncHandCountdown(Date.now())
+			}
+		)
 
 		requestAnimationFrame(this.loop.bind(this))
 
 		// Initial render
 		const initialPlaceability = this.engine.currentShapes.map((s) => (s ? this.engine.canPlaceShape(s) : false))
 		this.lastPlaceability = initialPlaceability // Init state
-		this.renderer.draw(this.engine, this.engine, null, null, null, initialPlaceability, Date.now())
+		this.renderer.draw(this.engine, this.engine, null, null, null, initialPlaceability, Date.now(), this.handTimerRatio, this.timerPanic)
+		this.positionTimerBars()
 
 		// Start Tutorial if not completed
 		if (!localStorage.getItem("bp_tutorial_completed")) {
 			this.tutorialManager.start()
+		} else {
+			// Only start timer if tutorial is not active
+			this.syncHandCountdown(Date.now())
 		}
 	}
 
@@ -112,11 +133,11 @@ class GameApp {
 	}
 
 	bindControls() {
-		document.getElementById("reset-btn")?.addEventListener("click", () => {
-			if (confirm("Restart game?")) this.restart()
-		})
 		document.getElementById("restart-btn")?.addEventListener("click", () => {
 			this.restart()
+		})
+		document.getElementById("pause-btn")?.addEventListener("click", () => {
+			this.togglePause()
 		})
 		document.getElementById("replay-btn")?.addEventListener("click", () => {
 			this.startReplay()
@@ -125,6 +146,29 @@ class GameApp {
 		// Replay controls - just exit
 		document.getElementById("replay-exit")?.addEventListener("click", () => {
 			this.exitReplay()
+		})
+
+		document.addEventListener("keydown", (e) => {
+			if (e.key === "Escape" || e.key === "p" || e.key === " ") {
+				// Don't toggle pause if settings modal is open (it has its own Escape handler)
+				const settingsModal = document.getElementById("settings-modal")
+				if (settingsModal && !settingsModal.classList.contains("hidden")) {
+					return
+				}
+				e.preventDefault()
+				this.togglePause()
+			}
+		})
+
+		// pause on focus lost
+		window.addEventListener("blur", () => {
+			this.pauseGame()
+		})
+		// when document.visibilityState === "hidden", pause game
+		document.addEventListener("visibilitychange", () => {
+			if (document.visibilityState === "hidden") {
+				this.pauseGame()
+			}
 		})
 	}
 
@@ -147,10 +191,29 @@ class GameApp {
 		// Events
 		settingsBtn?.addEventListener("click", () => {
 			modal?.classList.remove("hidden")
+			this.pauseGame()
 		})
 
 		closeBtn?.addEventListener("click", () => {
 			modal?.classList.add("hidden")
+			this.resumeGame()
+		})
+
+		// Close modal when clicking outside of it (on the overlay)
+		modal?.addEventListener("click", (e) => {
+			if (e.target === modal) {
+				modal.classList.add("hidden")
+				this.resumeGame()
+			}
+		})
+
+		// Close modal with Escape key
+		document.addEventListener("keydown", (e) => {
+			if (e.key === "Escape" && modal && !modal.classList.contains("hidden")) {
+				e.preventDefault()
+				modal.classList.add("hidden")
+				this.resumeGame()
+			}
 		})
 
 		slider?.addEventListener("input", (e) => {
@@ -192,6 +255,14 @@ class GameApp {
 		if (this.isInReplayMode) {
 			this.exitReplay()
 		}
+
+		// Clear pause state and timer
+		if (this.isPaused) {
+			this.resumeGame()
+		}
+		this.handDeadline = null
+		this.lastHandGeneration = -1
+		this.timerPanic = false
 
 		if (this.tutorialManager.isActive) {
 			this.tutorialManager["endTutorial"]() // Accessing private valid in runtime but TS might complain? Main is TS.
@@ -246,10 +317,170 @@ class GameApp {
 			document.getElementById("game-over-overlay")?.classList.remove("hidden")
 			document.getElementById("final-score")!.textContent = this.engine.score.toString()
 		}
+
+		if (this.engine.isGameOver) {
+			this.updateCountdownUI(null)
+		}
+	}
+
+	private updateCountdownUI(remainingMs: number | null) {
+		const barFillBottom = document.querySelector("#hand-timer-bottom .hand-timer-fill") as HTMLDivElement | null
+
+		const applyFill = (fillEl: HTMLDivElement | null, ratio: number, remaining: number | null) => {
+			if (!fillEl) return
+			if (remaining === null) {
+				fillEl.style.width = "0%"
+				this.handTimerRatio = null
+				return
+			}
+			const clamped = Math.max(0, Math.min(1, ratio))
+			fillEl.style.width = `${clamped * 100}%`
+			fillEl.style.background = remaining <= 3000 ? "#ff5f8a" : "linear-gradient(90deg, #7ee0f4, #5ed1c9)"
+			this.handTimerRatio = clamped
+		}
+
+		if (this.isInReplayMode || this.engine.isGameOver) {
+			applyFill(barFillBottom, 0, null)
+			this.handTimerRatio = null
+			return
+		}
+
+		if (this.isPaused) {
+			// keep current widths; do nothing
+			return
+		}
+
+		if (remainingMs === null) {
+			applyFill(barFillBottom, 0, null)
+			this.handTimerRatio = null
+			return
+		}
+
+		const ratio = remainingMs / this.HAND_TIME_LIMIT_MS
+		applyFill(barFillBottom, ratio, remainingMs)
+		this.handTimerRatio = Math.max(0, Math.min(1, ratio))
+	}
+
+	private syncHandCountdown(now: number) {
+		if (this.isInReplayMode) {
+			this.updateCountdownUI(null)
+			return
+		}
+
+		// Don't start timer during tutorial
+		if (this.tutorialManager.isActive) {
+			this.updateCountdownUI(null)
+			return
+		}
+
+		// Detect new hand dealt
+		if (this.engine.handGeneration !== this.lastHandGeneration) {
+			this.lastHandGeneration = this.engine.handGeneration
+			if (!this.engine.isGameOver) {
+				this.handDeadline = now + this.HAND_TIME_LIMIT_MS
+			} else {
+				this.handDeadline = null
+			}
+		}
+
+		if (this.engine.isGameOver) {
+			this.handDeadline = null
+			this.timerPanic = false
+			this.updateCountdownUI(null)
+			return
+		}
+
+		// While paused, keep UI showing paused state but do not tick down
+		if (this.isPaused) {
+			this.updateCountdownUI(this.handDeadline ? this.handDeadline - now : null)
+			return
+		}
+
+		if (this.handDeadline) {
+			const remaining = this.handDeadline - now
+			this.timerPanic = remaining <= 3000 && remaining > 0
+			// If timer hits zero and there are still blocks in the tray, end the game
+			if (remaining <= 0 && this.engine.currentShapes.some((s) => s !== null)) {
+				this.endGameDueToTimeout()
+				this.updateCountdownUI(0)
+				return
+			}
+
+			this.updateCountdownUI(Math.max(0, remaining))
+		} else {
+			this.timerPanic = false
+			this.updateCountdownUI(null)
+		}
+	}
+
+	private endGameDueToTimeout() {
+		this.engine.isGameOver = true
+		this.handDeadline = null
+		document.getElementById("game-over-overlay")?.classList.remove("hidden")
+		document.getElementById("final-score")!.textContent = this.engine.score.toString()
+		this.updateUI()
+	}
+
+	private positionTimerBars() {
+		const bottomBar = document.getElementById("hand-timer-bottom") as HTMLDivElement | null
+		if (!bottomBar || !this.renderer.layout) return
+
+		const { boardRect } = this.renderer.layout
+		const containerRect = this.canvas.getBoundingClientRect()
+		// Convert layout coords (relative to canvas origin top-left) to absolute within game-container
+		const canvasStyleLeft = this.canvas.offsetLeft
+		const canvasStyleTop = this.canvas.offsetTop
+
+		const commonWidth = `${boardRect.w}px`
+
+		bottomBar.style.width = commonWidth
+		bottomBar.style.left = `${canvasStyleLeft + boardRect.x}px`
+		// place just below board but above tray area
+		bottomBar.style.top = `${canvasStyleTop + boardRect.y + boardRect.h + 8}px`
+
+		// If layout recalculated and bars would go outside container, clamp
+		const containerWidth = containerRect.width
+		const clamp = (val: number, min: number, max: number) => Math.min(Math.max(val, min), max)
+		const maxLeft = containerWidth - boardRect.w
+		const leftBottom = clamp(parseFloat(bottomBar.style.left), 0, maxLeft)
+		bottomBar.style.left = `${leftBottom}px`
+	}
+
+	private pauseGame() {
+		if (this.isPaused || this.engine.isGameOver || this.isInReplayMode) return
+		this.isPaused = true
+		this.pauseStartedAt = Date.now()
+		// Clear any in-progress drag so resume is clean
+		this.dragShape = null
+		this.dragPos = null
+		this.ghostPos = null
+		document.getElementById("pause-overlay")?.classList.remove("hidden")
+		const btn = document.getElementById("pause-btn")
+		if (btn) btn.textContent = "▶"
+	}
+
+	private resumeGame() {
+		if (!this.isPaused) return
+		const now = Date.now()
+		if (this.pauseStartedAt && this.handDeadline) {
+			// Push deadline forward by the paused duration
+			this.handDeadline += now - this.pauseStartedAt
+		}
+		this.isPaused = false
+		this.pauseStartedAt = null
+		document.getElementById("pause-overlay")?.classList.add("hidden")
+		const btn = document.getElementById("pause-btn")
+		if (btn) btn.textContent = "⏸"
+	}
+
+	private togglePause() {
+		if (this.isInReplayMode || this.engine.isGameOver) return
+		if (this.isPaused) this.resumeGame()
+		else this.pauseGame()
 	}
 
 	onDragStart(index: number) {
-		if (this.engine.isGameOver) return
+		if (this.engine.isGameOver || this.isPaused) return
 		const shape = this.engine.currentShapes[index]
 		if (shape) {
 			// Check if the shape can be placed anywhere on the grid
@@ -348,7 +579,7 @@ class GameApp {
 	}
 
 	onDragMove(x: number, y: number) {
-		if (!this.dragShape) return
+		if (!this.dragShape || this.isPaused) return
 		this.dragPos = { x, y }
 
 		// Calculate Ghost
@@ -366,7 +597,7 @@ class GameApp {
 	}
 
 	onDragEnd(r: number, c: number) {
-		if (!this.dragShape) return
+		if (!this.dragShape || this.isPaused) return
 
 		// The input manager passed r,c based on its own naive calculation (top-left).
 		// We really should ignore the passed r,c if it's wrong, or fix it in Input.
@@ -442,9 +673,13 @@ class GameApp {
 		const now = Date.now()
 
 		// Advance game state (powerup timers/spawns) only during live play
-		if (!this.isInReplayMode) {
+		if (!this.isInReplayMode && !this.isPaused) {
 			this.engine.update(now)
 		}
+
+		// Manage the per-hand countdown timer
+		this.syncHandCountdown(now)
+		this.positionTimerBars()
 
 		// Use replay engine if in replay mode, otherwise use main engine
 		const activeEngine = this.isInReplayMode && this.replayPlayer ? this.replayPlayer.getEngine() : this.engine
@@ -464,7 +699,8 @@ class GameApp {
 		const dragPos = this.isInReplayMode ? null : this.dragPos
 		const ghostPos = this.isInReplayMode ? null : this.ghostPos
 
-		this.renderer.draw(activeEngine, activeEngine, dragShape, dragPos, ghostPos, placeability, now)
+		const handRatio = this.handTimerRatio
+		this.renderer.draw(activeEngine, activeEngine, dragShape, dragPos, ghostPos, placeability, now, handRatio, this.timerPanic)
 
 		// Update replay UI if in replay mode
 		if (this.isInReplayMode) {
@@ -505,11 +741,15 @@ class GameApp {
 		else if (now < this.reliefUntil) {
 			faceClass = "face-relief"
 		}
-		// Priority 2: Panic (Unplaceable Block)
+		// Priority 2: Timer Panic (last 3s)
+		else if (this.timerPanic) {
+			faceClass = "face-panic"
+		}
+		// Priority 3: Panic (Unplaceable Block)
 		else if (hasPanic) {
 			faceClass = "face-panic"
 		}
-		// Priority 3: Grid Fullness
+		// Priority 4: Grid Fullness
 		else {
 			let filled = 0
 			for (let i = 0; i < this.engine.grid.length; i++) {

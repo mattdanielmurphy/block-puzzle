@@ -1,6 +1,7 @@
+import { GRID_SIZE, MoveResult, Shape } from "../engine/types.js"
+
 import { GameEngine } from "../engine/logic.js"
 import { GameRenderer } from "./renderer.js"
-import { GRID_SIZE, Shape, MoveResult } from "../engine/types.js"
 
 export class TutorialManager {
 	private engine: GameEngine
@@ -8,6 +9,7 @@ export class TutorialManager {
 	private step: number = 0
 	isActive: boolean = false
 	private onComplete: () => void
+	private onTutorialEnd?: () => void
 
 	// UI Elements
 	private overlay: HTMLElement
@@ -16,10 +18,11 @@ export class TutorialManager {
 	private nextBtn: HTMLElement
 	private skipBtn: HTMLElement
 
-	constructor(engine: GameEngine, renderer: GameRenderer, onComplete: () => void) {
+	constructor(engine: GameEngine, renderer: GameRenderer, onComplete: () => void, onTutorialEnd?: () => void) {
 		this.engine = engine
 		this.renderer = renderer
 		this.onComplete = onComplete
+		this.onTutorialEnd = onTutorialEnd
 
 		this.overlay = document.getElementById("tutorial-overlay")!
 		this.titleEl = document.getElementById("tutorial-title")!
@@ -57,6 +60,10 @@ export class TutorialManager {
 		localStorage.setItem("bp_tutorial_completed", "true")
 		this.engine.reset() // Establish fresh game state
 		this.onComplete()
+		// Notify main app to start timer
+		if (this.onTutorialEnd) {
+			this.onTutorialEnd()
+		}
 	}
 
 	public skip() {
@@ -116,7 +123,7 @@ export class TutorialManager {
 				break
 			case 4: // Game Over
 				this.setupGameOverStep()
-				this.updateText("Last Thing", "The game ends when there are no valid moves.", "Tip: Increase sensitivity in settings to move faster.")
+				this.updateText("Last Thing", "The game ends when there are no valid moves or the timer runs out.", "Tip: Increase sensitivity in settings to move faster.")
 				this.engine.setShapes([null, null, null])
 				break
 		}

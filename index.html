@@ -20,7 +20,7 @@
 					<div id="status-face" class="face-normal"></div>
 					<div class="score-label">SCORE <span id="current-score">0</span></div>
 				</div>
-				<button id="reset-btn" aria-label="Reset Game">↺</button>
+				<button id="pause-btn" aria-label="Pause Game">⏸</button>
 			</header>
 
 			<div id="tutorial-overlay" class="hidden overlay pointer-events-none">
@@ -50,11 +50,19 @@
 
 			<main id="game-container">
 				<canvas id="game-canvas"></canvas>
+				<div id="hand-timer-bottom" class="hand-timer-bar">
+					<div class="hand-timer-fill"></div>
+				</div>
 				<div id="game-over-overlay" class="hidden overlay">
 					<h1>Game Over</h1>
 					<p>Final Score: <span id="final-score">0</span></p>
 					<button id="restart-btn">Try Again</button>
-					<!-- <button id="replay-btn">▶ Replay Game</button> --> <!-- Replay button is disabled for now because it's not working and not really necessary -->
+					<!-- <button id="replay-btn">▶ Replay Game</button> -->
+					<!-- Replay button is disabled for now because it's not working and not really necessary -->
+				</div>
+				<div id="pause-overlay" class="hidden overlay">
+					<h1>Paused</h1>
+					<p>Press Esc or Resume to continue</p>
 				</div>
 				<div id="settings-modal" class="hidden overlay">
 					<div class="modal-content">

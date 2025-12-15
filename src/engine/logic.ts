@@ -10,6 +10,10 @@ export class GameEngine {
 		return this.powerupManager.getPowerups();
 	}
 
+	// Tracks each time a new hand of blocks is dealt so the UI can run timers.
+	handGeneration: number = 0
+	handDealtAt: number = Date.now()
+
 	grid: Grid
 	score: number
 	bestScore: number = 0
@@ -94,6 +98,9 @@ export class GameEngine {
 			}
 
 			this.currentShapes = selectedShapes
+			// Mark a new hand being dealt for timers/UX
+			this.handGeneration++
+			this.handDealtAt = Date.now()
 		}
 	}
 
@@ -319,6 +326,8 @@ export class GameEngine {
 		this.isGameOver = false
 		this.moves = 0
 		this.lastUpdateTime = Date.now()
+		this.handGeneration = 0
+		this.handDealtAt = Date.now()
 	}
 
 	// Update powerups (call this from the game loop)
