@@ -11,6 +11,98 @@ import { THEME } from "./ui/theme.js"
 import { TutorialManager } from "./ui/tutorial.js"
 import { VERSION } from "./version.js"
 
+const GAME_OVER_QUOTES = [
+	"A valiant effort.",
+	"It's about the friends you made along the way.",
+	"Don't be sad.",
+	"You may have lost, but you're still a winner in my books.",
+	"Good job.",
+	"You showed those blocks who's boss.",
+	"I love you.",
+	"Not bad, guy.",
+	"Way to go, sport!",
+	"There's always next year.",
+	"Thank you, come again.",
+	"Rate and subscribe.",
+	"Why did you do that?",
+	"Be better.",
+	"Pretty, pretty, pretty good.",
+	"Swell effort, friend.",
+	"This guy gets it.",
+	"No cheating.",
+	"We all lose eventually.",
+	"Next time, you'll beat it.",
+	"You were so close to winning!",
+	"That was almost impressive.",
+	"Better luck next time, champ.",
+	"You gave it your all. Well, maybe 60%.",
+	"The blocks have spoken.",
+	"Ouch. That hurt to watch.",
+	"You'll get 'em next time, tiger.",
+	"At least you tried.",
+	"The grid gods were not in your favor.",
+	"You fought bravely. You lost, but bravely.",
+	"That's what I call a learning experience.",
+	"Close, but no cigar.",
+	"You're getting warmer. Or colder. Hard to tell.",
+	"The blocks win this round.",
+	"You're still my favorite player.",
+	"Mistakes were made.",
+	"That's one for the history books.",
+	"You're the handsomest block-placer in all the realm.",
+	"How did you even--just kidding, I know how you even.",
+	"You're the best block-placer I've ever seen.",
+	"You got skills, kid.",
+	"What the hell?",
+	"Not quite my tempo.",
+	"Were you rushing or were you dragging?",
+	"Oh brother, this guy stinks!",
+	"You call that a game?",
+	"You're the worst block-placer I've ever seen.",
+	"You're not going to win the tournament with that kind of play.",
+	"The blocks will have their revenge.",
+	"I give you an 8/10.",
+	"What's your major malfunction? No, really, I want to help.",
+	"Actions always have consequences.",
+	"Coffee is for closers.",
+	"ABP: Always Be Placing.",
+	"Just keep swimming.",
+	"If you ain't first, you're last.",
+	"Don't forget to bring a towel!",
+	"You're not the first to fall for this.",
+	"Give it a rest, will you?",
+	"Yeah, ok buddy...",
+	"Again?",
+	"Tell your friends.",
+	"Don't tell anybody about this...",
+	"This will be our little secret.",
+	"What a long strange trip it's been.",
+	"Seen any good movies lately?",
+	"You're like, scary good. Just kidding.",
+	"I want to play a game.",
+	"There's always money in the banana stand.",
+	"Always leave a note.",
+	"Stay in school.",
+	"You win a prize! Go to the door, there's a package there waiting for you. No, really. Would I lie about that?",
+	"Can I get your autograph?",
+	"Are you classically trained?",
+	"You should see me play.",
+	"Where do you get off?",
+	"What's your problem?",
+	"Did you know there are 400k species of beetle? That's a lot.",
+	"Did you know giraffes face a 30 times higher lightning strike risk than humans due to their height?",
+	"Did you know clouds weigh about a million tonnes on average?",
+	"Did you know sharks predate trees by roughly 50 million years on Earth?",
+	"Did you know tardigrades can survive in outer space and endure temperatures from near absolute zero to 150°C?",
+	"Did you know the Alpine swift holds the record for longest nonstop flight at over 200 days airborne?",
+	"Did you know a Madagascar radiated tortoise lived to 188 years, the verified longest-lived land animal?",
+	"Did you know only 5% of cheetah cubs survive to adulthood due to predators and disease?",
+	"Did you know a tiger's rear legs remain standing even after death from their immense power?",
+	"Did you know sheep can recognize and remember human faces for up to two years?",
+	"Did you know koalas sleep up to 22 hours daily to digest their low-nutrient eucalyptus diet?",
+	"Did you know Cuvier’s beaked whales hold their breath for over two hours while diving?",
+]
+
 class GameApp {
 	engine: GameEngine
 	renderer: GameRenderer
@@ -418,6 +510,14 @@ class GameApp {
 		this.handDeadline = null
 		document.getElementById("game-over-overlay")?.classList.remove("hidden")
 		document.getElementById("final-score")!.textContent = this.engine.score.toString()
+
+		// Display a random quote
+		const randomQuote = GAME_OVER_QUOTES[Math.floor(Math.random() * GAME_OVER_QUOTES.length)]
+		const quoteElement = document.getElementById("game-over-quote")
+		if (quoteElement) {
+			quoteElement.textContent = randomQuote
+		}
+
 		this.updateUI()
 	}
 
