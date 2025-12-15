@@ -143,6 +143,9 @@ class GameApp {
 	private handDeadline: number | null = null
 	private lastHandGeneration: number = -1
 
+	// Quote tracking
+	private usedQuoteIndices: Set<number> = new Set()
+
 	constructor() {
 		this.displayVersion()
 		this.canvas = document.getElementById("game-canvas") as HTMLCanvasElement
@@ -187,6 +190,18 @@ class GameApp {
 		this.bindControls()
 		this.initSettings()
 
+		// Load used quotes from localStorage
+		const savedUsedQuotes = localStorage.getItem("bp_used_quotes")
+		if (savedUsedQuotes) {
+			try {
+				const indices = JSON.parse(savedUsedQuotes) as number[]
+				this.usedQuoteIndices = new Set(indices)
+			} catch (e) {
+				// If parsing fails, start fresh
+				this.usedQuoteIndices = new Set()
+			}
+		}
+
 		// Init Tutorial
 		this.tutorialManager = new TutorialManager(
 			this.engine,
@@ -222,6 +237,30 @@ class GameApp {
 		if (el) {
 			el.textContent = `v${VERSION}`
 		}
+	}
+
+	private getRandomUnusedQuote(): string {
+		// If all quotes have been used, reset the pool
+		if (this.usedQuoteIndices.size >= GAME_OVER_QUOTES.length) {
+			this.usedQuoteIndices.clear()
+		}
+
+		// Get available quote indices
+		const availableIndices: number[] = []
+		for (let i = 0; i < GAME_OVER_QUOTES.length; i++) {
+			if (!this.usedQuoteIndices.has(i)) {
+				availableIndices.push(i)
+			}
+		}
+
+		// Pick a random unused quote
+		const randomIndex = availableIndices[Math.floor(Math.random() * availableIndices.length)]
+		this.usedQuoteIndices.add(randomIndex)
+
+		// Save to localStorage
+		localStorage.setItem("bp_used_quotes", JSON.stringify(Array.from(this.usedQuoteIndices)))
+
+		return GAME_OVER_QUOTES[randomIndex]
 	}
 
 	bindControls() {
@@ -408,6 +447,12 @@ class GameApp {
 		if (this.engine.isGameOver) {
 			document.getElementById("game-over-overlay")?.classList.remove("hidden")
 			document.getElementById("final-score")!.textContent = this.engine.score.toString()
+
+			// Display a random quote
+			const quoteElement = document.getElementById("game-over-quote")
+			if (quoteElement) {
+				quoteElement.textContent = this.getRandomUnusedQuote()
+			}
 		}
 
 		if (this.engine.isGameOver) {
@@ -512,10 +557,9 @@ class GameApp {
 		document.getElementById("final-score")!.textContent = this.engine.score.toString()
 
 		// Display a random quote
-		const randomQuote = GAME_OVER_QUOTES[Math.floor(Math.random() * GAME_OVER_QUOTES.length)]
 		const quoteElement = document.getElementById("game-over-quote")
 		if (quoteElement) {
-			quoteElement.textContent = randomQuote
+			quoteElement.textContent = this.getRandomUnusedQuote()
 		}
 
 		this.updateUI()
