@@ -117,7 +117,7 @@ class GameApp {
 
 	// Debug/testing flags
 	private readonly DEBUG_SPAWN_POWERUP_ON_START = false
-	private readonly DEBUG_ENABLE_POWERUP_KEYS = true
+	private readonly DEBUG_ENABLE_POWERUP_KEYS = false
 
 	// Snap settings
 	private readonly SNAP_THRESHOLD = 3
