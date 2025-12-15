@@ -203,6 +203,13 @@ canvas {
     margin-bottom: 20px;
 }
 
+#game-over-quote {
+    font-style: italic;
+    opacity: 0.8;
+    margin: 10px 0;
+    max-width: 80%;
+}
+
 #restart-btn,
 #replay-btn,
 #close-settings-btn {
