@@ -293,14 +293,18 @@ class GameApp {
 
 		// pause on focus lost
 		window.addEventListener("blur", () => {
-			this.pauseGame()
-		})
-		// when document.visibilityState === "hidden", pause game
-		document.addEventListener("visibilitychange", () => {
-			if (document.visibilityState === "hidden") {
+			if (!this.tutorialManager.isActive) {
 				this.pauseGame()
 			}
 		})
+
+		//? Disabled the following because the purpose was to pause when focus is lost while devtools are open, but that doesn't work; And having it enabled results in the game pausing when devtools are opened/closed, which can be annoying in dev testing
+		// // when document.visibilityState === "hidden", pause game
+		// document.addEventListener("visibilitychange", () => {
+		// 	if (document.visibilityState === "hidden" && !this.tutorialManager.isActive) {
+		// 		this.pauseGame()
+		// 	}
+		// })
 	}
 
 	initSettings() {

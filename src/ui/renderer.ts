@@ -41,12 +41,13 @@ export class GameRenderer {
 	}
 
 	resize() {
-		// Parent container dimensions
-		const container = this.canvas.parentElement
-		if (!container) return
-
+		// CSS handles the visual size (100% width/height of container)
+		// We just need to match the internal resolution to the visual size
 		const dpr = window.devicePixelRatio || 1
-		const rect = container.getBoundingClientRect()
+		const rect = this.canvas.getBoundingClientRect()
+
+		// If the element is hidden or collapsed, don't resizing to 0
+		if (rect.width === 0 || rect.height === 0) return
 
 		this.width = rect.width
 		this.height = rect.height
@@ -55,8 +56,6 @@ export class GameRenderer {
 		this.canvas.height = this.height * dpr
 
 		this.ctx.scale(dpr, dpr)
-		this.canvas.style.width = this.width + "px"
-		this.canvas.style.height = this.height + "px"
 
 		this.recalcLayout()
 		// Request redraw handled by game loop
