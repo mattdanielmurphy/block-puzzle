@@ -1,96 +1,113 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Block Puzzle</title>
-    <meta name="description" content="Offline Block Sudoku Puzzle Game">
-    <link rel="stylesheet" href="styles.css">
-    <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#1a1a1a">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-</head>
-<body>
-    <div id="app">
-        <header>
-            <button id="settings-btn" aria-label="Settings">⚙️</button>
-            <div class="score-board">
-                <div class="score-label">BEST <span id="best-score">0</span></div>
-                <div id="status-face" class="face-normal"></div>
-                <div class="score-label">SCORE <span id="current-score">0</span></div>
-            </div>
-            <button id="reset-btn" aria-label="Reset Game">↺</button>
-        </header>
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+		<title>Block Puzzle</title>
+		<meta name="description" content="Offline Block Sudoku Puzzle Game" />
+		<link rel="stylesheet" href="styles.css" />
+		<link rel="manifest" href="manifest.json" />
+		<meta name="theme-color" content="#1a1a1a" />
+		<meta name="apple-mobile-web-app-capable" content="yes" />
+		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+	</head>
+	<body>
+		<div id="app">
+			<header>
+				<button id="settings-btn" aria-label="Settings">⚙️</button>
+				<div class="score-board">
+					<div class="score-label">BEST <span id="best-score">0</span></div>
+					<div id="status-face" class="face-normal"></div>
+					<div class="score-label">SCORE <span id="current-score">0</span></div>
+				</div>
+				<button id="reset-btn" aria-label="Reset Game">↺</button>
+			</header>
 
-        <div id="tutorial-overlay" class="hidden overlay pointer-events-none">
-            <div class="tutorial-box pointer-events-auto">
-                    <h2 id="tutorial-title">How to Play</h2>
-                    <p id="tutorial-text">Welcome! Drag blocks to the grid.</p>
-                <!-- Action Buttons Container -->
-                <div class="tutorial-actions">
-                    <button id="tutorial-next-btn" class="primary-btn">Next</button>
-                    <button id="tutorial-skip-btn" class="secondary-btn">Skip</button>
-                </div>
-            </div>
-        </div>
+			<div id="tutorial-overlay" class="hidden overlay pointer-events-none">
+				<div class="tutorial-box pointer-events-auto">
+					<h2 id="tutorial-title">How to Play</h2>
+					<p id="tutorial-text"></p>
+					<!-- Action Buttons Container -->
+					<div class="tutorial-actions">
+						<button id="tutorial-next-btn" class="primary-btn">Next</button>
+						<button id="tutorial-skip-btn" class="secondary-btn">Skip</button>
+					</div>
+				</div>
+			</div>
 
-        <div id="replay-overlay" class="hidden overlay">
-            <div class="replay-controls">
-                <div class="replay-header">
-                    <h2>Replaying Game</h2>
-                    <div class="replay-stats">
-                        <span>Move: <span id="replay-move">0</span>/<span id="replay-total">0</span></span>
-                        <span>Score: <span id="replay-score">0</span></span>
-                    </div>
-                </div>
-                <button id="replay-exit" class="secondary-btn">Exit</button>
-            </div>
-        </div>
+			<div id="replay-overlay" class="hidden overlay">
+				<div class="replay-controls">
+					<div class="replay-header">
+						<h2>Replaying Game</h2>
+						<div class="replay-stats">
+							<span>Move: <span id="replay-move">0</span>/<span id="replay-total">0</span></span>
+							<span>Score: <span id="replay-score">0</span></span>
+						</div>
+					</div>
+					<button id="replay-exit" class="secondary-btn">Exit</button>
+				</div>
+			</div>
 
-        <main id="game-container">
-            <canvas id="game-canvas"></canvas>
-            <div id="game-over-overlay" class="hidden overlay">
-                <h1>Game Over</h1>
-                <p>Final Score: <span id="final-score">0</span></p>
-                <button id="restart-btn">Try Again</button>
-                <button id="replay-btn">▶ Replay Game</button>
-            </div>
-            <div id="settings-modal" class="hidden overlay">
-                <div class="modal-content">
-                    <h2>Settings</h2>
-                    <div class="setting-item">
-                        <label for="sensitivity-slider">Sensitivity: <span id="sensitivity-value">1.5</span></label>
-                        <input type="range" id="sensitivity-slider" min="1.0" max="3.0" step="0.1" value="1.5">
-                    </div>
-                    <div class="setting-item" style="margin-top: 20px; border-top: 1px solid #333; padding-top: 15px;">
-                        <button id="clear-cache-btn" class="secondary-btn" style="width: 100%; border: 1px solid #ff4444; color: #ff4444;">Clear Cache & Reload</button>
-                    </div>
-                    <button id="close-settings-btn">Close</button>
-                </div>
-            </div>
+			<main id="game-container">
+				<canvas id="game-canvas"></canvas>
+				<div id="game-over-overlay" class="hidden overlay">
+					<h1>Game Over</h1>
+					<p>Final Score: <span id="final-score">0</span></p>
+					<button id="restart-btn">Try Again</button>
+					<button id="replay-btn">▶ Replay Game</button>
+				</div>
+				<div id="settings-modal" class="hidden overlay">
+					<div class="modal-content">
+						<h2>Settings</h2>
+						<div class="setting-item">
+							<label for="sensitivity-slider">Sensitivity: <span id="sensitivity-value">1.0</span></label>
+							<input type="range" id="sensitivity-slider" min="1.0" max="3.0" step="0.1" value="1.0" />
+						</div>
+						<div class="setting-item" style="margin-top: 20px; border-top: 1px solid #333; padding-top: 15px">
+							<button id="clear-cache-btn" class="secondary-btn" style="width: 100%; border: 1px solid #ff4444; color: #ff4444">Clear Cache & Reload</button>
+						</div>
+						<button id="close-settings-btn">Close</button>
+					</div>
+				</div>
+			</main>
 
-        </main>
-        
-        <footer>
-            <span id="app-version"></span>
-        </footer>
-    </div>
-    <script type="module" src="dist/src/main.js"></script>
-    <script>
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                // Register the Development Service Worker
-                // We add a timestamp to the URL to ensure the SW file itself is never cached
-                navigator.serviceWorker.register('service-worker.js?v=' + Date.now())
-                    .then(registration => {
-                        console.log('Dev ServiceWorker registered: ', registration);
-                    })
-                    .catch(registrationError => {
-                        console.log('Dev ServiceWorker registration failed: ', registrationError);
-                    });
-            });
-        }
-    </script>
-</body>
+			<footer>
+				<span id="app-version"></span>
+			</footer>
+		</div>
+		<script type="module" src="dist/src/main.js"></script>
+		<script>
+			if ("serviceWorker" in navigator) {
+				window.addEventListener("load", () => {
+					const isLocalhost = Boolean(
+						window.location.hostname === "localhost" ||
+							// [::1] is the IPv6 localhost address.
+							window.location.hostname === "[::1]" ||
+							// 127.0.0.1/8 is considered localhost for IPv4.
+							window.location.hostname.match(/^127(?:\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)){3}$/)
+					)
+
+					if (isLocalhost) {
+						console.log("ServiceWorker is disabled on localhost")
+						navigator.serviceWorker.getRegistrations().then(function (registrations) {
+							for (let registration of registrations) {
+								registration.unregister()
+							}
+						})
+					} else {
+						// Register the Service Worker for production
+						// We add a timestamp to the URL to ensure the SW file itself is never cached
+						navigator.serviceWorker
+							.register("service-worker.js?v=" + Date.now())
+							.then((registration) => {
+								console.log("ServiceWorker registered: ", registration)
+							})
+							.catch((registrationError) => {
+								console.log("ServiceWorker registration failed: ", registrationError)
+							})
+					}
+				})
+			}
+		</script>
+	</body>
 </html>

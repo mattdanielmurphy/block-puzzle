@@ -383,7 +383,7 @@ footer {
     border-radius: 12px;
     text-align: center;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
-    width: 350px;
+    width: 450px;
     max-width: 90%;
     margin: 0 auto;
     border: 1px solid var(--accent-color);
@@ -454,6 +454,7 @@ footer {
     font-size: 1.1rem;
     line-height: 1.4;
     color: #eee;
+    white-space: pre-wrap;
 }
 
 .tutorial-actions {
