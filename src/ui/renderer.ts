@@ -1,6 +1,7 @@
-import { GameState, Shape, GRID_SIZE, Point, Grid } from '../engine/types.js';
-import { THEME } from './theme.js';
+import { GRID_SIZE, GameState, Grid, Point, Shape } from '../engine/types.js';
+
 import { Effect } from './effects.js';
+import { THEME } from './theme.js';
 
 export interface Layout {
     boardRect: { x: number, y: number, w: number, h: number, cellSize: number };
@@ -99,12 +100,16 @@ export class GameRenderer {
         ];
     }
 
-    draw(state: GameState, dragShape: Shape | null, dragPos: {x:number, y:number} | null, ghostPos: {r:number, c:number} | null, placeability: boolean[] | null) {
+    draw(state: GameState, gameEngine: any, dragShape: Shape | null, dragPos: {x:number, y:number} | null, ghostPos: {r:number, c:number} | null, placeability: boolean[] | null, currentTime: number = Date.now()) {
         // Clear
         this.ctx.fillStyle = THEME.colors.background;
         this.ctx.fillRect(0, 0, this.width, this.height);
 
         this.drawBoard(state.grid, ghostPos, dragShape);
+        // Draw Powerups if provided
+        if (gameEngine && typeof gameEngine.getPowerups === 'function') {
+            this.drawPowerups(gameEngine.getPowerups(), currentTime);
+        }
         this.drawEffects();
         this.drawTray(state.currentShapes, dragShape, state.currentShapes.indexOf(dragShape), placeability);
         
@@ -124,14 +129,9 @@ export class GameRenderer {
             for (let c = 0; c < GRID_SIZE; c++) {
                 const cx = x + c * (cellSize + gap);
                 const cy = y + r * (cellSize + gap);
-                
                 // Draw Cell
                 const cellVal = grid[r * GRID_SIZE + c];
                 this.ctx.fillStyle = cellVal === 0 ? THEME.colors.emptyCell : THEME.colors.shapes[cellVal];
-                
-                // Highlight valid/invalid if ghosting?
-                // Actually ghost is drawn on top
-                
                 this.roundRect(cx, cy, cellSize, cellSize, rad);
                 this.ctx.fill();
             }
@@ -141,14 +141,12 @@ export class GameRenderer {
         this.ctx.strokeStyle = THEME.colors.subgridLine;
         this.ctx.lineWidth = 4;
         this.ctx.beginPath();
-        
         // Vertical lines (after col 2 and 5)
         for (let c = 3; c < GRID_SIZE; c += 3) {
              const cx = x + c * (cellSize + gap) - gap/2;
              this.ctx.moveTo(cx, y);
              this.ctx.lineTo(cx, y + GRID_SIZE * (cellSize + gap) - gap);
         }
-
         // Horizontal lines (after row 2 and 5)
         for (let r = 3; r < GRID_SIZE; r += 3) {
              const cy = y + r * (cellSize + gap) - gap/2;
@@ -156,7 +154,6 @@ export class GameRenderer {
              this.ctx.lineTo(x + GRID_SIZE * (cellSize + gap) - gap, cy);
         }
         this.ctx.stroke();
-
         // Draw Ghost
         if (ghostPos && dragShape) {
             this.ctx.fillStyle = THEME.colors.ghost;
@@ -170,15 +167,56 @@ export class GameRenderer {
                     this.ctx.fill();
                 }
             }
-            
-            // Draw validity overlay? 
-            // The prompt asks for: "valid placement in green and invalid in red"
-            // We can do this by tinting the ghost or drawing a border
-            // I'll re-check game logic for validity passed in? 
-            // Actually, the main loop will determine validity. 
-            // Renderer just receives "ghostPos" which implies validity (snapped). 
-            // But invalid placement needs red.
         }
+    }
+
+    drawPowerups(powerups: any[], currentTime: number) {
+        // Draw each powerup as a bomb icon for now
+        const { x, y, cellSize } = this.layout.boardRect;
+        const gap = THEME.metrics.cellGap;
+        const ctx = this.ctx;
+        const colorMap: Record<string, { bomb: string, fuse: string }> = {
+            bomb_small: { bomb: 'orange', fuse: 'yellow' },
+            bomb_med: { bomb: '#f7630c', fuse: '#ffd166' },    // deeper orange
+            bomb_large: { bomb: '#c1121f', fuse: '#ff8fab' },  // red
+            bomb_mega: { bomb: '#6a0dad', fuse: '#e0b3ff' },   // purple, rare
+        };
+        powerups.forEach(powerup => {
+            const age = currentTime - powerup.spawnTime;
+            const t = Math.min(Math.max(age / powerup.lifetime, 0), 1);
+            const alpha = 1 - t; // fade out over lifetime
+
+            const cx = x + powerup.position.c * (cellSize + gap);
+            const cy = y + powerup.position.r * (cellSize + gap);
+
+            const colors = colorMap[powerup.type] || colorMap["bomb_small"];
+
+            // Draw a simple bomb shape
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            ctx.beginPath();
+            ctx.arc(cx + cellSize / 2, cy + cellSize / 2, cellSize * 0.35, 0, 2 * Math.PI);
+            ctx.fillStyle = colors.bomb;
+            ctx.shadowColor = '#000';
+            ctx.shadowBlur = 8;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            // Draw fuse
+            ctx.beginPath();
+            ctx.moveTo(cx + cellSize / 2, cy + cellSize / 2 - cellSize * 0.35);
+            ctx.lineTo(cx + cellSize / 2, cy + cellSize / 2 - cellSize * 0.55);
+            ctx.strokeStyle = colors.fuse;
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Optionally, add a sparkle on fuse
+            ctx.beginPath();
+            ctx.arc(cx + cellSize / 2, cy + cellSize / 2 - cellSize * 0.58, cellSize * 0.06, 0, 2 * Math.PI);
+            ctx.fillStyle = 'white';
+            ctx.fill();
+            ctx.restore();
+        });
     }
 
     drawTray(shapes: (Shape | null)[], draggingShape: Shape | null, draggingIndex: number, placeability: boolean[] | null) {

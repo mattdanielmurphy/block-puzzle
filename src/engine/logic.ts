@@ -1,9 +1,15 @@
-import { Grid, Shape, Point, MoveResult, GRID_SIZE, GameState } from "./types.js"
-import { ALL_SHAPES, SHAPE_WEIGHTS, SHAPE_CATEGORIES, SHAPE_BASE_INDEX_MAP, SHAPE_VARIATION_COUNTS } from "./shapes.js"
+import { ALL_SHAPES, SHAPE_BASE_INDEX_MAP, SHAPE_CATEGORIES, SHAPE_VARIATION_COUNTS, SHAPE_WEIGHTS } from "./shapes.js"
+import { GRID_SIZE, GameState, Grid, MoveResult, Point, Shape } from "./types.js"
+import { Powerup, PowerupActivation, PowerupManager } from "./powerups.js"
+
 import { RNG } from "./rng.js"
 import { ReplayManager } from "./replay.js"
 
 export class GameEngine {
+	getPowerups() {
+		return this.powerupManager.getPowerups();
+	}
+
 	grid: Grid
 	score: number
 	bestScore: number = 0
@@ -14,6 +20,8 @@ export class GameEngine {
 	moves: number = 0
 	rng: RNG
 	replayManager: ReplayManager
+	powerupManager: PowerupManager
+	lastUpdateTime: number = Date.now()
 
 	constructor(seed: number = Date.now()) {
 		this.grid = new Array(GRID_SIZE * GRID_SIZE).fill(0)
@@ -21,6 +29,7 @@ export class GameEngine {
 		this.seed = seed // Store seed
 		this.rng = new RNG(seed)
 		this.replayManager = new ReplayManager(seed)
+		this.powerupManager = new PowerupManager(this.rng)
 		this.currentShapes = []
 		this.refillShapes()
 	}
@@ -111,13 +120,26 @@ export class GameEngine {
 		}
 
 		// 1. Commit placement
+		const placedCells: Point[] = []
 		for (const cell of shape.cells) {
 			const r = boardRow + cell.r
 			const c = boardCol + cell.c
 			this.grid[this.getIndex(r, c)] = shape.colorId
+			placedCells.push({ r, c })
 		}
 
 		this.currentShapes[shapeIndex] = null
+
+		// 1.5 Check for powerup collection
+		const collectedPowerup = this.powerupManager.checkCollection(placedCells)
+		let powerupActivation: PowerupActivation | null = null
+		if (collectedPowerup) {
+			powerupActivation = this.powerupManager.activatePowerup(collectedPowerup, this.grid)
+			// Clear cells affected by powerup
+			for (const cell of powerupActivation.affectedCells) {
+				this.grid[this.getIndex(cell.r, cell.c)] = 0
+			}
+		}
 
 		// 2. Calculate placement points
 		// Special case: 3x3 block gets fewer points (it's a "lucky" block)
@@ -191,6 +213,11 @@ export class GameEngine {
 			}
 		}
 
+		// Add powerup points if any
+		if (powerupActivation) {
+			points += powerupActivation.pointsAwarded
+		}
+
 		this.score += points
 
 		// 5. Apply Clears
@@ -216,6 +243,9 @@ export class GameEngine {
 			this.grid[idx] = 0
 		})
 
+		// Chance to spawn a powerup after a successful placement (post-clear so it lands on empty cells)
+		this.powerupManager.onPlacement(Date.now(), this.grid)
+
 		// 6. Refill if empty
 		if (this.currentShapes.every((s) => s === null)) {
 			this.refillShapes()
@@ -230,15 +260,21 @@ export class GameEngine {
 		// Record move for replay
 		this.replayManager.recordMove(shape, boardRow, boardCol, this.score, rowsToClear, colsToClear, boxesToClear)
 
+		// Combine cleared cells from lines/boxes and powerup
+		const allClearedCells = Array.from(cellsToClear).map((idx) => ({
+			r: Math.floor(idx / GRID_SIZE),
+			c: idx % GRID_SIZE,
+		}))
+		if (powerupActivation) {
+			allClearedCells.push(...powerupActivation.affectedCells)
+		}
+
 		return {
 			valid: true,
 			clearedRows: rowsToClear,
 			clearedCols: colsToClear,
 			clearedBoxes: boxesToClear,
-			clearedCells: Array.from(cellsToClear).map((idx) => ({
-				r: Math.floor(idx / GRID_SIZE),
-				c: idx % GRID_SIZE,
-			})),
+			clearedCells: allClearedCells,
 			pointsAdded: points,
 			comboMultiplier: totalClears,
 			gameOver,
@@ -275,11 +311,29 @@ export class GameEngine {
 		this.seed = seed
 		this.rng = new RNG(seed)
 		this.replayManager = new ReplayManager(seed)
+		this.powerupManager = new PowerupManager(this.rng)
 		this.grid = new Array(GRID_SIZE * GRID_SIZE).fill(0)
 		this.score = 0
 		this.currentShapes = []
 		this.refillShapes()
 		this.isGameOver = false
 		this.moves = 0
+		this.lastUpdateTime = Date.now()
+	}
+
+	// Update powerups (call this from the game loop)
+	update(currentTime: number = Date.now()) {
+		this.lastUpdateTime = currentTime
+		this.powerupManager.update(currentTime, this.grid)
+	}
+
+	// Testing helper: force spawn a powerup immediately
+	spawnTestPowerup(currentTime: number = Date.now()) {
+		this.powerupManager.spawnImmediate(currentTime, this.grid)
+	}
+
+	// Testing helper: force spawn a specific powerup type
+	spawnPowerupOfType(type: Powerup["type"], currentTime: number = Date.now()) {
+		this.powerupManager.spawnOfType(type, currentTime, this.grid)
 	}
 }

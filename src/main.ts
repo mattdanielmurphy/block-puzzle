@@ -1,13 +1,15 @@
+import { GRID_SIZE, Shape } from "./engine/types.js"
+
+import { BlockClearEffect } from "./ui/effects.js"
 import { GameEngine } from "./engine/logic.js"
 import { GameRenderer } from "./ui/renderer.js"
 import { InputManager } from "./ui/input.js"
-import { Shape, GRID_SIZE } from "./engine/types.js"
-import { THEME } from "./ui/theme.js"
-import { BlockClearEffect } from "./ui/effects.js"
-import { VERSION } from "./version.js"
+import { PowerupType } from "./engine/powerups.js"
 import { ReplayPlayer } from "./ui/replay-player.js"
 import { ReplayState } from "./engine/replay.js"
+import { THEME } from "./ui/theme.js"
 import { TutorialManager } from "./ui/tutorial.js"
+import { VERSION } from "./version.js"
 
 class GameApp {
 	engine: GameEngine
@@ -20,6 +22,10 @@ class GameApp {
 	dragPos: { x: number; y: number } | null = null
 
 	ghostPos: { r: number; c: number } | null = null
+
+	// Debug/testing flags
+	private readonly DEBUG_SPAWN_POWERUP_ON_START = false
+	private readonly DEBUG_ENABLE_POWERUP_KEYS = true
 
 	// Snap settings
 	private readonly SNAP_THRESHOLD = 3
@@ -42,6 +48,33 @@ class GameApp {
 		this.engine = new GameEngine(Date.now())
 		this.renderer = new GameRenderer(this.canvas)
 
+		if (this.DEBUG_SPAWN_POWERUP_ON_START) {
+			this.engine.spawnTestPowerup()
+		}
+
+		if (this.DEBUG_ENABLE_POWERUP_KEYS) {
+			document.addEventListener("keydown", (e) => {
+				const now = Date.now()
+				switch (e.key.toLowerCase()) {
+					case "1":
+						this.engine.spawnPowerupOfType(PowerupType.BOMB_SMALL, now)
+						break
+					case "2":
+						this.engine.spawnPowerupOfType(PowerupType.BOMB_MED, now)
+						break
+					case "3":
+						this.engine.spawnPowerupOfType(PowerupType.BOMB_LARGE, now)
+						break
+					case "4":
+						this.engine.spawnPowerupOfType(PowerupType.BOMB_MEGA, now)
+						break
+					default:
+						return
+				}
+				e.preventDefault()
+			})
+		}
+
 		this.input = new InputManager(this.canvas, this.renderer, {
 			onDragStart: this.onDragStart.bind(this),
 			onDragMove: this.onDragMove.bind(this),
@@ -63,7 +96,7 @@ class GameApp {
 		// Initial render
 		const initialPlaceability = this.engine.currentShapes.map((s) => (s ? this.engine.canPlaceShape(s) : false))
 		this.lastPlaceability = initialPlaceability // Init state
-		this.renderer.draw(this.engine, null, null, null, initialPlaceability)
+		this.renderer.draw(this.engine, this.engine, null, null, null, initialPlaceability, Date.now())
 
 		// Start Tutorial if not completed
 		if (!localStorage.getItem("bp_tutorial_completed")) {
@@ -175,6 +208,9 @@ class GameApp {
 		}
 
 		this.engine.reset(Date.now())
+		if (this.DEBUG_SPAWN_POWERUP_ON_START) {
+			this.engine.spawnTestPowerup()
+		}
 		this.loadHighScore() // Load high score into the new engine
 		this.dragShape = null
 		this.dragPos = null
@@ -403,6 +439,13 @@ class GameApp {
 		// Update animations
 		this.renderer.updateEffects(dt)
 
+		const now = Date.now()
+
+		// Advance game state (powerup timers/spawns) only during live play
+		if (!this.isInReplayMode) {
+			this.engine.update(now)
+		}
+
 		// Use replay engine if in replay mode, otherwise use main engine
 		const activeEngine = this.isInReplayMode && this.replayPlayer ? this.replayPlayer.getEngine() : this.engine
 
@@ -421,7 +464,7 @@ class GameApp {
 		const dragPos = this.isInReplayMode ? null : this.dragPos
 		const ghostPos = this.isInReplayMode ? null : this.ghostPos
 
-		this.renderer.draw(activeEngine, dragShape, dragPos, ghostPos, placeability)
+		this.renderer.draw(activeEngine, activeEngine, dragShape, dragPos, ghostPos, placeability, now)
 
 		// Update replay UI if in replay mode
 		if (this.isInReplayMode) {
