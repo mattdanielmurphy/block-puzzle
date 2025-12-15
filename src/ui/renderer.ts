@@ -176,10 +176,10 @@ export class GameRenderer {
         const gap = THEME.metrics.cellGap;
         const ctx = this.ctx;
         const colorMap: Record<string, { bomb: string, fuse: string }> = {
-            bomb_small: { bomb: 'orange', fuse: 'yellow' },
-            bomb_med: { bomb: '#f7630c', fuse: '#ffd166' },    // deeper orange
-            bomb_large: { bomb: '#c1121f', fuse: '#ff8fab' },  // red
-            bomb_mega: { bomb: '#6a0dad', fuse: '#e0b3ff' },   // purple, rare
+            bomb_small: { bomb: '#2bd4ff', fuse: '#9ef5ff' },
+            bomb_med: { bomb: '#5f8cff', fuse: '#c7d2ff' },
+            bomb_large: { bomb: '#a05bff', fuse: '#e4c7ff' },
+            bomb_mega: { bomb: '#1ce9c9', fuse: '#b7f7ff' },   // rare cosmic teal
         };
         powerups.forEach(powerup => {
             const age = currentTime - powerup.spawnTime;

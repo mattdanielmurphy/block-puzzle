@@ -91,9 +91,8 @@ function generateVariations(baseCoords: { r: number; c: number }[], baseIndex: n
 			if (!uniqueSignatures.has(sig)) {
 				uniqueSignatures.add(sig)
 
-				// Color based on size
-				const size = normalized.length
-				const colorId = Math.max(1, Math.min(5, size))
+				// Color is locked to the base shape index so rotations/mirrors share one hue
+				const colorId = baseIndex + 1
 
 				shapes.push({
 					id: `shape_${baseIndex}_v${shapes.length}`,
