@@ -42,8 +42,8 @@ body {
 }
 
 header {
-    display: flex;
-    justify-content: space-between;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
     align-items: center;
     padding: 16px;
     min-height: 80px;
@@ -54,6 +54,7 @@ header {
     display: flex;
     gap: 30px;
     align-items: center;
+    justify-self: center;
 }
 
 .score-label {
@@ -62,6 +63,8 @@ header {
     font-size: 0.8rem;
     color: #8aa2c8;
     font-weight: bold;
+    width: 70px;
+    align-items: center;
 }
 
 .score-label span {
@@ -118,6 +121,14 @@ header {
     font-size: 2rem;
     color: #8aa2c8;
     cursor: pointer;
+}
+
+#settings-btn {
+    justify-self: start;
+}
+
+#pause-btn {
+    justify-self: end;
 }
 
 #pause-btn {
