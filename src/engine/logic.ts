@@ -1,239 +1,285 @@
-import { Grid, Shape, Point, MoveResult, GRID_SIZE, GameState } from './types.js';
-import { ALL_SHAPES } from './shapes.js';
-import { RNG } from './rng.js';
-import { ReplayManager } from './replay.js';
+import { Grid, Shape, Point, MoveResult, GRID_SIZE, GameState } from "./types.js"
+import { ALL_SHAPES, SHAPE_WEIGHTS, SHAPE_CATEGORIES, SHAPE_BASE_INDEX_MAP, SHAPE_VARIATION_COUNTS } from "./shapes.js"
+import { RNG } from "./rng.js"
+import { ReplayManager } from "./replay.js"
 
 export class GameEngine {
-    grid: Grid;
-    score: number;
-    bestScore: number = 0;
-    currentShapes: (Shape | null)[];
-    shapesInQueue: Shape[] = [];
-    isGameOver: boolean = false;
-    seed: number;
-    moves: number = 0;
-    rng: RNG;
-    replayManager: ReplayManager;
+	grid: Grid
+	score: number
+	bestScore: number = 0
+	currentShapes: (Shape | null)[]
+	shapesInQueue: Shape[] = []
+	isGameOver: boolean = false
+	seed: number
+	moves: number = 0
+	rng: RNG
+	replayManager: ReplayManager
 
-    constructor(seed: number = Date.now()) {
-        this.grid = new Array(GRID_SIZE * GRID_SIZE).fill(0);
-        this.score = 0;
-        this.seed = seed; // Store seed
-        this.rng = new RNG(seed);
-        this.replayManager = new ReplayManager(seed);
-        this.currentShapes = [];
-        this.refillShapes();
-    }
+	constructor(seed: number = Date.now()) {
+		this.grid = new Array(GRID_SIZE * GRID_SIZE).fill(0)
+		this.score = 0
+		this.seed = seed // Store seed
+		this.rng = new RNG(seed)
+		this.replayManager = new ReplayManager(seed)
+		this.currentShapes = []
+		this.refillShapes()
+	}
 
-    private getIndex(r: number, c: number): number {
-        return r * GRID_SIZE + c;
-    }
+	private getIndex(r: number, c: number): number {
+		return r * GRID_SIZE + c
+	}
 
-    private isValid(r: number, c: number): boolean {
-        return r >= 0 && r < GRID_SIZE && c >= 0 && c < GRID_SIZE;
-    }
+	private isValid(r: number, c: number): boolean {
+		return r >= 0 && r < GRID_SIZE && c >= 0 && c < GRID_SIZE
+	}
 
-    // Refill logic: Get 3 random shapes
-    refillShapes() {
-        if (this.currentShapes.every(s => s === null)) {
-            // Pick 3 unique random shapes
-            // Create a pool of indices 0..N-1
-            const indices = Array.from({length: ALL_SHAPES.length}, (_, i) => i);
-            
-            // Shuffle (Fisher-Yates)
-            for (let i = indices.length - 1; i > 0; i--) {
-                const j = this.rng.range(0, i + 1);
-                [indices[i], indices[j]] = [indices[j], indices[i]];
-            }
-            
-            // Take first 3
-            this.currentShapes = [
-                ALL_SHAPES[indices[0]],
-                ALL_SHAPES[indices[1]],
-                ALL_SHAPES[indices[2]]
-            ];
-        }
-    }
+	// Refill logic: Get 3 random shapes with weighted selection
+	// Weights are defined in SHAPE_WEIGHTS array (from shapes.ts)
+	// Only one diagonal shape allowed per hand
+	refillShapes() {
+		if (this.currentShapes.every((s) => s === null)) {
+			const selectedIndices: number[] = []
+			const selectedShapes: Shape[] = []
+			const selectedCategories = new Set<string>()
 
-    canPlace(shape: Shape, boardRow: number, boardCol: number): boolean {
-        for (const cell of shape.cells) {
-            const r = boardRow + cell.r;
-            const c = boardCol + cell.c;
+			// Pick 3 unique shapes with weighted selection
+			while (selectedShapes.length < 3) {
+				// Create weighted pool excluding already selected shapes
+				const weightedPool: number[] = []
+				for (let i = 0; i < ALL_SHAPES.length; i++) {
+					if (selectedIndices.includes(i)) continue // Skip already selected
 
-            // Check bounds
-            if (!this.isValid(r, c)) return false;
+					// Get the base shape index for this variation
+					const baseIdx = SHAPE_BASE_INDEX_MAP[i]
 
-            // Check overlap
-            if (this.grid[this.getIndex(r, c)] !== 0) return false;
-        }
-        return true;
-    }
+					// Skip if this shape's category has already been selected
+					const category = SHAPE_CATEGORIES[baseIdx]
+					if (category && selectedCategories.has(category)) continue
 
-    place(shapeIndex: number, boardRow: number, boardCol: number): MoveResult {
-        const shape = this.currentShapes[shapeIndex];
-        if (!shape) throw new Error("Shape index empty");
-        
-        if (!this.canPlace(shape, boardRow, boardCol)) {
-             return { valid: false, clearedRows: [], clearedCols: [], clearedBoxes: [], clearedCells: [], pointsAdded: 0, comboMultiplier: 0, gameOver: false }; 
-        }
+					// Use weight from SHAPE_WEIGHTS array (indexed by base shape)
+					// Divide by variation count so total weight for base shape is correct
+					const baseWeight = SHAPE_WEIGHTS[baseIdx] || 1
+					const variationCount = SHAPE_VARIATION_COUNTS[baseIdx] || 1
+					const weight = baseWeight / variationCount
 
-        // 1. Commit placement
-        for (const cell of shape.cells) {
-            const r = boardRow + cell.r;
-            const c = boardCol + cell.c;
-            this.grid[this.getIndex(r, c)] = shape.colorId;
-        }
+					// Convert fractional weights to integer pool entries
+					const poolEntries = Math.max(1, Math.round(weight * 10))
+					for (let w = 0; w < poolEntries; w++) {
+						weightedPool.push(i)
+					}
+				}
 
-        this.currentShapes[shapeIndex] = null;
-        
-        // 2. Calculate placement points
-        let points = shape.cells.length;
+				// Pick a random shape from the weighted pool
+				if (weightedPool.length > 0) {
+					const shapeIdx = weightedPool[this.rng.range(0, weightedPool.length)]
+					selectedIndices.push(shapeIdx)
+					selectedShapes.push(ALL_SHAPES[shapeIdx])
 
-        // 3. Clear Detection
-        const rowsToClear: number[] = [];
-        const colsToClear: number[] = [];
-        const boxesToClear: number[] = [];
+					// Track category if present (using base index)
+					const baseIdx = SHAPE_BASE_INDEX_MAP[shapeIdx]
+					const category = SHAPE_CATEGORIES[baseIdx]
+					if (category) selectedCategories.add(category)
+				} else {
+					break // Safety: no more shapes available
+				}
+			}
 
-        // Check Rows
-        for (let r = 0; r < GRID_SIZE; r++) {
-            let full = true;
-            for (let c = 0; c < GRID_SIZE; c++) {
-                if (this.grid[this.getIndex(r, c)] === 0) { full = false; break; }
-            }
-            if (full) rowsToClear.push(r);
-        }
+			this.currentShapes = selectedShapes
+		}
+	}
 
-        // Check Cols
-        for (let c = 0; c < GRID_SIZE; c++) {
-            let full = true;
-            for (let r = 0; r < GRID_SIZE; r++) {
-                if (this.grid[this.getIndex(r, c)] === 0) { full = false; break; }
-            }
-            if (full) colsToClear.push(c);
-        }
+	canPlace(shape: Shape, boardRow: number, boardCol: number): boolean {
+		for (const cell of shape.cells) {
+			const r = boardRow + cell.r
+			const c = boardCol + cell.c
 
-        // Check Boxes (3x3)
-        // Box indices: 0..8
-        // Top-left of box b: r = Math.floor(b/3)*3, c = (b%3)*3
-        for (let b = 0; b < 9; b++) {
-             const startR = Math.floor(b / 3) * 3;
-             const startC = (b % 3) * 3;
-             let full = true;
-             for (let r = startR; r < startR + 3; r++) {
-                 for (let c = startC; c < startC + 3; c++) {
-                     if (this.grid[this.getIndex(r, c)] === 0) { full = false; break; }
-                 }
-                 if (!full) break;
-             }
-             if (full) boxesToClear.push(b);
-        }
+			// Check bounds
+			if (!this.isValid(r, c)) return false
 
-        // 4. Score Bonues (Simple but satisfying rules)
-        const totalClears = rowsToClear.length + colsToClear.length + boxesToClear.length;
-        if (totalClears > 0) {
-            points += totalClears * 10; // 10 points per line/box
-            if (totalClears > 1) {
-                points += (totalClears - 1) * 20; // Combo bonus
-            }
-        }
-        
-        this.score += points;
+			// Check overlap
+			if (this.grid[this.getIndex(r, c)] !== 0) return false
+		}
+		return true
+	}
 
-        // 5. Apply Clears
-        const cellsToClear = new Set<number>();
-        
-        rowsToClear.forEach(r => {
-            for(let c=0; c<GRID_SIZE; c++) cellsToClear.add(this.getIndex(r, c));
-        });
-        colsToClear.forEach(c => {
-             for(let r=0; r<GRID_SIZE; r++) cellsToClear.add(this.getIndex(r, c));
-        });
-        boxesToClear.forEach(b => {
-             const startR = Math.floor(b / 3) * 3;
-             const startC = (b % 3) * 3;
-             for(let r=startR; r<startR+3; r++) {
-                 for(let c=startC; c<startC+3; c++) {
-                     cellsToClear.add(this.getIndex(r, c));
-                 }
-             }
-        });
+	place(shapeIndex: number, boardRow: number, boardCol: number): MoveResult {
+		const shape = this.currentShapes[shapeIndex]
+		if (!shape) throw new Error("Shape index empty")
 
-        cellsToClear.forEach(idx => {
-            this.grid[idx] = 0;
-        });
+		if (!this.canPlace(shape, boardRow, boardCol)) {
+			return { valid: false, clearedRows: [], clearedCols: [], clearedBoxes: [], clearedCells: [], pointsAdded: 0, comboMultiplier: 0, gameOver: false }
+		}
 
-        // 6. Refill if empty
-        if (this.currentShapes.every(s => s === null)) {
-            this.refillShapes();
-        }
+		// 1. Commit placement
+		for (const cell of shape.cells) {
+			const r = boardRow + cell.r
+			const c = boardCol + cell.c
+			this.grid[this.getIndex(r, c)] = shape.colorId
+		}
 
-        // 7. Check Game Over
-        const gameOver = !this.canPlaceAny();
-        this.isGameOver = gameOver; // Update state
+		this.currentShapes[shapeIndex] = null
 
-        this.moves++; // Increment moves
-        
-        // Record move for replay
-        this.replayManager.recordMove(
-            shape,
-            boardRow,
-            boardCol,
-            this.score,
-            rowsToClear,
-            colsToClear,
-            boxesToClear
-        );
+		// 2. Calculate placement points
+		// Special case: 3x3 block gets fewer points (it's a "lucky" block)
+		let points = shape.cells.length
+		if (shape.cells.length === 9) {
+			// Check if it's actually a 3x3 block (not just 9 cells in some other shape)
+			const minR = Math.min(...shape.cells.map((c) => c.r))
+			const maxR = Math.max(...shape.cells.map((c) => c.r))
+			const minC = Math.min(...shape.cells.map((c) => c.c))
+			const maxC = Math.max(...shape.cells.map((c) => c.c))
+			const is3x3Block = maxR - minR === 2 && maxC - minC === 2
+			if (is3x3Block) {
+				points = 5 // Reduced from 9 for the lucky 3x3 block
+			}
+		}
 
-        return {
-            valid: true,
-            clearedRows: rowsToClear,
-            clearedCols: colsToClear,
-            clearedBoxes: boxesToClear,
-            clearedCells: Array.from(cellsToClear).map(idx => ({
-                r: Math.floor(idx / GRID_SIZE),
-                c: idx % GRID_SIZE
-            })),
-            pointsAdded: points,
-            comboMultiplier: totalClears,
-            gameOver
-        };
-    }
+		// 3. Clear Detection
+		const rowsToClear: number[] = []
+		const colsToClear: number[] = []
+		const boxesToClear: number[] = []
 
-    canPlaceAny(): boolean {
-        // Brute force check: try every shape in every position
-        // Optimization: early exit
-        for (const shape of this.currentShapes) {
-            if (!shape) continue;
-            if (this.canPlaceShape(shape)) return true;
-        }
-        return false;
-    }
+		// Check Rows
+		for (let r = 0; r < GRID_SIZE; r++) {
+			let full = true
+			for (let c = 0; c < GRID_SIZE; c++) {
+				if (this.grid[this.getIndex(r, c)] === 0) {
+					full = false
+					break
+				}
+			}
+			if (full) rowsToClear.push(r)
+		}
 
-    canPlaceShape(shape: Shape): boolean {
-        for (let r = 0; r < GRID_SIZE; r++) {
-            for (let c = 0; c < GRID_SIZE; c++) {
-                if (this.canPlace(shape, r, c)) return true;
-            }
-        }
-        return false;
-    }
-    setGrid(newGrid: Grid) {
-        this.grid = [...newGrid];
-    }
+		// Check Cols
+		for (let c = 0; c < GRID_SIZE; c++) {
+			let full = true
+			for (let r = 0; r < GRID_SIZE; r++) {
+				if (this.grid[this.getIndex(r, c)] === 0) {
+					full = false
+					break
+				}
+			}
+			if (full) colsToClear.push(c)
+		}
 
-    setShapes(newShapes: (Shape | null)[]) {
-        this.currentShapes = [...newShapes];
-    }
+		// Check Boxes (3x3)
+		// Box indices: 0..8
+		// Top-left of box b: r = Math.floor(b/3)*3, c = (b%3)*3
+		for (let b = 0; b < 9; b++) {
+			const startR = Math.floor(b / 3) * 3
+			const startC = (b % 3) * 3
+			let full = true
+			for (let r = startR; r < startR + 3; r++) {
+				for (let c = startC; c < startC + 3; c++) {
+					if (this.grid[this.getIndex(r, c)] === 0) {
+						full = false
+						break
+					}
+				}
+				if (!full) break
+			}
+			if (full) boxesToClear.push(b)
+		}
 
-    reset(seed: number = Date.now()) {
-        this.seed = seed;
-        this.rng = new RNG(seed);
-        this.replayManager = new ReplayManager(seed);
-        this.grid = new Array(GRID_SIZE * GRID_SIZE).fill(0);
-        this.score = 0;
-        this.currentShapes = [];
-        this.refillShapes();
-        this.isGameOver = false;
-        this.moves = 0;
-    }
+		// 4. Score Bonues (Simple but satisfying rules)
+		const totalClears = rowsToClear.length + colsToClear.length + boxesToClear.length
+		if (totalClears > 0) {
+			points += totalClears * 10 // 10 points per line/box
+			if (totalClears > 1) {
+				points += (totalClears - 1) * 20 // Combo bonus
+			}
+		}
+
+		this.score += points
+
+		// 5. Apply Clears
+		const cellsToClear = new Set<number>()
+
+		rowsToClear.forEach((r) => {
+			for (let c = 0; c < GRID_SIZE; c++) cellsToClear.add(this.getIndex(r, c))
+		})
+		colsToClear.forEach((c) => {
+			for (let r = 0; r < GRID_SIZE; r++) cellsToClear.add(this.getIndex(r, c))
+		})
+		boxesToClear.forEach((b) => {
+			const startR = Math.floor(b / 3) * 3
+			const startC = (b % 3) * 3
+			for (let r = startR; r < startR + 3; r++) {
+				for (let c = startC; c < startC + 3; c++) {
+					cellsToClear.add(this.getIndex(r, c))
+				}
+			}
+		})
+
+		cellsToClear.forEach((idx) => {
+			this.grid[idx] = 0
+		})
+
+		// 6. Refill if empty
+		if (this.currentShapes.every((s) => s === null)) {
+			this.refillShapes()
+		}
+
+		// 7. Check Game Over
+		const gameOver = !this.canPlaceAny()
+		this.isGameOver = gameOver // Update state
+
+		this.moves++ // Increment moves
+
+		// Record move for replay
+		this.replayManager.recordMove(shape, boardRow, boardCol, this.score, rowsToClear, colsToClear, boxesToClear)
+
+		return {
+			valid: true,
+			clearedRows: rowsToClear,
+			clearedCols: colsToClear,
+			clearedBoxes: boxesToClear,
+			clearedCells: Array.from(cellsToClear).map((idx) => ({
+				r: Math.floor(idx / GRID_SIZE),
+				c: idx % GRID_SIZE,
+			})),
+			pointsAdded: points,
+			comboMultiplier: totalClears,
+			gameOver,
+		}
+	}
+
+	canPlaceAny(): boolean {
+		// Brute force check: try every shape in every position
+		// Optimization: early exit
+		for (const shape of this.currentShapes) {
+			if (!shape) continue
+			if (this.canPlaceShape(shape)) return true
+		}
+		return false
+	}
+
+	canPlaceShape(shape: Shape): boolean {
+		for (let r = 0; r < GRID_SIZE; r++) {
+			for (let c = 0; c < GRID_SIZE; c++) {
+				if (this.canPlace(shape, r, c)) return true
+			}
+		}
+		return false
+	}
+	setGrid(newGrid: Grid) {
+		this.grid = [...newGrid]
+	}
+
+	setShapes(newShapes: (Shape | null)[]) {
+		this.currentShapes = [...newShapes]
+	}
+
+	reset(seed: number = Date.now()) {
+		this.seed = seed
+		this.rng = new RNG(seed)
+		this.replayManager = new ReplayManager(seed)
+		this.grid = new Array(GRID_SIZE * GRID_SIZE).fill(0)
+		this.score = 0
+		this.currentShapes = []
+		this.refillShapes()
+		this.isGameOver = false
+		this.moves = 0
+	}
 }
