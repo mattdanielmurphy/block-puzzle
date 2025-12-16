@@ -1,13 +1,52 @@
 import { ALL_SHAPES, SHAPE_BASE_INDEX_MAP, SHAPE_CATEGORIES, SHAPE_VARIATION_COUNTS, SHAPE_WEIGHTS } from "./shapes.js"
-import { GRID_SIZE, GameState, Grid, MoveResult, Point, Shape } from "./types.js"
+import { GRID_SIZE, GameState, Grid, MoveResult, Point, SavedEngineState, SavedPowerupState, Shape } from "./types.js"
 import { Powerup, PowerupActivation, PowerupManager } from "./powerups.js"
 
 import { RNG } from "./rng.js"
 import { ReplayManager } from "./replay.js"
 
 export class GameEngine {
+	// Persistence
+	serialize(): SavedEngineState {
+		return {
+			grid: [...this.grid],
+			score: this.score,
+			currentShapes: [...this.currentShapes], // Shallow copy of shapes array (shapes are objects but effectively immutable)
+			isGameOver: this.isGameOver,
+			seed: this.seed,
+			moves: this.moves,
+			handGeneration: this.handGeneration,
+			handDealtAt: this.handDealtAt,
+			powerupManagerState: this.powerupManager.serialize(),
+			rngState: this.rng.getState(),
+			lastMoveTime: this.lastMoveTime,
+		}
+	}
+
+	deserialize(state: SavedEngineState) {
+		this.grid = state.grid
+		this.score = state.score
+		this.currentShapes = state.currentShapes
+		this.isGameOver = state.isGameOver
+		this.seed = state.seed
+		this.moves = state.moves
+		this.handGeneration = state.handGeneration
+		this.handDealtAt = state.handDealtAt
+		this.powerupManager.deserialize(state.powerupManagerState)
+		if (state.rngState !== undefined) {
+			this.rng.setState(state.rngState)
+		}
+		this.lastMoveTime = state.lastMoveTime || Date.now()
+	}
+
+	shiftTime(deltaMs: number) {
+		if (this.handDealtAt > 0) this.handDealtAt += deltaMs
+		if (this.lastMoveTime > 0) this.lastMoveTime += deltaMs
+		this.powerupManager.shiftTime(deltaMs)
+	}
+
 	getPowerups() {
-		return this.powerupManager.getPowerups();
+		return this.powerupManager.getPowerups()
 	}
 
 	// Tracks each time a new hand of blocks is dealt so the UI can run timers.
@@ -26,6 +65,7 @@ export class GameEngine {
 	replayManager: ReplayManager
 	powerupManager: PowerupManager
 	lastUpdateTime: number = Date.now()
+	lastMoveTime: number = Date.now()
 
 	constructor(seed: number = Date.now()) {
 		this.grid = new Array(GRID_SIZE * GRID_SIZE).fill(0)
@@ -118,7 +158,7 @@ export class GameEngine {
 		return true
 	}
 
-	place(shapeIndex: number, boardRow: number, boardCol: number): MoveResult {
+	place(shapeIndex: number, boardRow: number, boardCol: number, options?: { isTutorial?: boolean }): MoveResult {
 		const shape = this.currentShapes[shapeIndex]
 		if (!shape) throw new Error("Shape index empty")
 
@@ -220,12 +260,24 @@ export class GameEngine {
 			}
 		}
 
+		// Fast Move Multiplier
+		const now = Date.now()
+		const timeSinceLastMove = now - this.lastMoveTime
+		let moveMultiplier = 1
+		if (timeSinceLastMove < 1500 && this.moves > 0) {
+			// 1.5 seconds threshold, skip first move
+			moveMultiplier = 1.5
+			points = Math.floor(points * moveMultiplier)
+		}
+
 		// Add powerup points if any
 		if (powerupActivation) {
 			points += powerupActivation.pointsAwarded
 		}
 
-		this.score += points
+		if (!options?.isTutorial) {
+			this.score += points
+		}
 
 		// 5. Apply Clears
 		const cellsToClear = new Set<number>()
@@ -263,6 +315,7 @@ export class GameEngine {
 		this.isGameOver = gameOver // Update state
 
 		this.moves++ // Increment moves
+		this.lastMoveTime = Date.now()
 
 		// Record move for replay
 		this.replayManager.recordMove(shape, boardRow, boardCol, this.score, rowsToClear, colsToClear, boxesToClear)
@@ -284,6 +337,7 @@ export class GameEngine {
 			clearedCells: allClearedCells,
 			pointsAdded: points,
 			comboMultiplier: totalClears,
+			moveMultiplier, // Pass back to UI if needed
 			gameOver,
 		}
 	}
@@ -327,7 +381,9 @@ export class GameEngine {
 		this.moves = 0
 		this.lastUpdateTime = Date.now()
 		this.handGeneration = 0
+
 		this.handDealtAt = Date.now()
+		this.lastMoveTime = Date.now()
 	}
 
 	// Update powerups (call this from the game loop)

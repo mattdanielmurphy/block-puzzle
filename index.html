@@ -3,8 +3,8 @@
 	<head>
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-		<title>Block Puzzle</title>
-		<meta name="description" content="Offline Block Sudoku Puzzle Game" />
+		<title>Blockdoku</title>
+		<meta name="description" content="Block Sudoku Puzzle Game" />
 		<link rel="stylesheet" href="styles.css" />
 		<link rel="manifest" href="manifest.json" />
 		<meta name="theme-color" content="#1a1a1a" />
@@ -48,6 +48,8 @@
 				</div>
 			</div>
 
+			<div id="highscore-notification" class="hidden">New High Score!</div>
+
 			<main id="game-container">
 				<canvas id="game-canvas"></canvas>
 				<div id="hand-timer-bottom" class="hand-timer-bar">
@@ -55,6 +57,7 @@
 				</div>
 				<div id="game-over-overlay" class="hidden overlay">
 					<h1>Game Over</h1>
+					<p id="game-over-highscore-label" class="hidden">New High Score!</p>
 					<p>Final Score: <span id="final-score">0</span></p>
 					<p id="game-over-quote"></p>
 					<button id="restart-btn">Try Again</button>
@@ -63,7 +66,7 @@
 				</div>
 				<div id="pause-overlay" class="hidden overlay">
 					<h1>Paused</h1>
-					<p>Press Esc or Resume to continue</p>
+					<p id="pause-instruction">Tap anywhere to resume</p>
 				</div>
 				<div id="settings-modal" class="hidden overlay">
 					<div class="modal-content">

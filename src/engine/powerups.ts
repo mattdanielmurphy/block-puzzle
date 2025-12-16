@@ -1,4 +1,4 @@
-import { GRID_SIZE, Grid, Point } from "./types.js"
+import { GRID_SIZE, Grid, Point, SavedPowerupState } from "./types.js"
 
 import { RNG } from "./rng.js"
 
@@ -40,18 +40,60 @@ export interface PowerupActivation {
 export class PowerupManager {
 	private powerups: Powerup[] = []
 	private rng: RNG
-	private readonly SPAWN_CHANCE_PER_PLACEMENT = 0.15 // 15% chance per placement
+
+	// Time-based spawning constants
+	private readonly COOLDOWN_DURATION = 20000 // 20 seconds to restore full probability
+	private readonly BASE_SPAWN_RATE = 0.1 // 10% chance per second after cooldown
+
+	private lastSpawnTime: number = 0
+	private lastUpdateTime: number = 0
 
 	constructor(rng: RNG) {
 		this.rng = rng
 	}
 
 	update(currentTime: number, grid: Grid): void {
-		// Remove expired powerups
+		// Initialize lastUpdateTime if strictly 0 (first frame)
+		if (this.lastUpdateTime === 0) {
+			this.lastUpdateTime = currentTime
+		}
+
+		const dt = currentTime - this.lastUpdateTime
+		this.lastUpdateTime = currentTime
+
+		// 1. Remove expired powerups
 		this.powerups = this.powerups.filter((p) => {
 			const age = currentTime - p.spawnTime
 			return age < p.lifetime
 		})
+
+		// 2. Try to spawn new powerup based on time
+		this.checkSpawn(currentTime, dt, grid)
+	}
+
+	private checkSpawn(currentTime: number, dt: number, grid: Grid) {
+		// Calculate time since last spawn
+		// If lastSpawnTime is 0, we treat it as "long ago" so full probability applies
+		const timeSinceLast = this.lastSpawnTime === 0 ? this.COOLDOWN_DURATION : currentTime - this.lastSpawnTime
+
+		// Logic:
+		// "when a bomb is spawned, for the next 20s or so, the probability ... should be extremely low
+		// and grow as more time passes until it's restored"
+
+		// 0 to 1 progress factor over 20s
+		const progress = Math.min(1, Math.max(0, timeSinceLast / this.COOLDOWN_DURATION))
+
+		// Use a curve that stays low then grows (convex). Squared or Cubed.
+		const probabilityFactor = progress * progress * progress
+
+		// Calculate probability for this frame
+		// Rate is "events per second". Prob ~ Rate * (dt / 1000)
+		const currentRatePerSecond = this.BASE_SPAWN_RATE * probabilityFactor
+		const spawnChance = currentRatePerSecond * (dt / 1000)
+
+		if (this.rng.next() < spawnChance) {
+			this.spawnPowerup(currentTime, grid)
+		}
 	}
 
 	// Explicitly spawn a powerup right now (useful for testing or tutorials)
@@ -59,11 +101,11 @@ export class PowerupManager {
 		this.spawnPowerup(currentTime, grid)
 	}
 
-	// Called after a successful block placement. Rolls chance to spawn a powerup.
+	// Called after a successful block placement.
+	// DEPRECATED regarding spawning logic, but kept for interface compatibility if needed.
+	// We no longer spawn here directly.
 	onPlacement(currentTime: number, grid: Grid): void {
-		if (this.rng.next() <= this.SPAWN_CHANCE_PER_PLACEMENT) {
-			this.spawnPowerup(currentTime, grid)
-		}
+		// No-op for spawning.
 	}
 
 	private spawnPowerup(currentTime: number, grid: Grid): void {
@@ -95,6 +137,9 @@ export class PowerupManager {
 		}
 
 		this.powerups.push(powerup)
+
+		// Record the spawn time to fully reset the probability cooldown
+		this.lastSpawnTime = currentTime
 	}
 
 	private pickSpec(): PowerupSpec {
@@ -203,6 +248,29 @@ export class PowerupManager {
 
 	getPowerups(): Powerup[] {
 		return [...this.powerups]
+	}
+
+	// Persistence
+	serialize(): SavedPowerupState {
+		return {
+			powerups: [...this.powerups],
+			lastSpawnTime: this.lastSpawnTime,
+			lastUpdateTime: this.lastUpdateTime,
+		}
+	}
+
+	deserialize(state: SavedPowerupState) {
+		this.powerups = state.powerups
+		this.lastSpawnTime = state.lastSpawnTime
+		this.lastUpdateTime = state.lastUpdateTime
+	}
+
+	shiftTime(deltaMs: number) {
+		if (this.lastSpawnTime > 0) this.lastSpawnTime += deltaMs
+		if (this.lastUpdateTime > 0) this.lastUpdateTime += deltaMs
+		this.powerups.forEach((p) => {
+			p.spawnTime += deltaMs
+		})
 	}
 
 	reset() {

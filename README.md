@@ -1,6 +1,6 @@
-# Block Sudoku PWA
+# Blockdoku PWA
 
-A clean-room, offline-first Block Sudoku puzzle game built with TypeScript, HTML5 Canvas, and CSS.
+An offline-first Block Sudoku puzzle game built with TypeScript, HTML5 Canvas, and CSS.
 
 ## File Structure
 ```

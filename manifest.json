@@ -1,6 +1,6 @@
 {
-	"name": "Block Sudoku",
-	"short_name": "BlockSudoku",
+	"name": "Blockdoku",
+	"short_name": "Blockdoku",
 	"start_url": "./",
 	"display": "standalone",
 	"background_color": "#121214",

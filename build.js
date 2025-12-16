@@ -55,8 +55,12 @@ ASSETS_TO_COPY.forEach((item) => {
 			let content = fs.readFileSync(sourcePath, "utf8")
 
 			if (item.src === "index.html") {
-				// Fix script path: "dist/src/main.js" -> "src/main.js"
-				content = content.replace('src="dist/src/main.js"', 'src="src/main.js"')
+				const timestamp = Date.now()
+				// Fix script path: "dist/src/main.js" -> "src/main.js" and add cache buster
+				content = content.replace('src="dist/src/main.js"', `src="src/main.js?v=${timestamp}"`)
+
+				// Add cache buster to CSS
+				content = content.replace('href="styles.css"', `href="styles.css?v=${timestamp}"`)
 
 				// Inject base tag if homepage is set
 				// Inject dynamic base tag script to support both root and subdirectory deployment
@@ -74,9 +78,11 @@ ASSETS_TO_COPY.forEach((item) => {
 </script>`
 				content = content.replace("<head>", `<head>\n    ${baseScript}`)
 			} else if (item.src === "service-worker.js") {
+				const timestamp = Date.now()
 				// Fix paths: "./dist/src/..." -> "./src/..."
-				// utilizing a global regex to replace all occurrences
 				content = content.replace(/\.\/dist\/src\//g, "./src/")
+				// Update Cache Name to force refresh
+				content = content.replace(/const CACHE_NAME = ['"]block-puzzle-v1['"](;?)/, `const CACHE_NAME = 'block-puzzle-v${timestamp}'$1`)
 			}
 
 			fs.writeFileSync(destPath, content)

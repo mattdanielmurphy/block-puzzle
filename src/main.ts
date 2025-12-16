@@ -1,6 +1,6 @@
-import { GRID_SIZE, Shape } from "./engine/types.js"
+import { BlockClearEffect, FloatingTextEffect } from "./ui/effects.js"
+import { GRID_SIZE, SavedAppState, Shape } from "./engine/types.js"
 
-import { BlockClearEffect } from "./ui/effects.js"
 import { GameEngine } from "./engine/logic.js"
 import { GameRenderer } from "./ui/renderer.js"
 import { InputManager } from "./ui/input.js"
@@ -146,8 +146,24 @@ class GameApp {
 	// Quote tracking
 	private usedQuoteIndices: Set<number> = new Set()
 
+	// High Score Tracking
+	private priorBestScore: number = 0
+	private highScoreNotificationShown: boolean = false
+
+	// Device Detection
+	private isMobile: boolean = false
+	private restartButtonTimeout: any = null
+
 	constructor() {
 		this.displayVersion()
+
+		// Detect Mobile
+		this.isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+		const pauseInst = document.getElementById("pause-instruction")
+		if (pauseInst) {
+			pauseInst.textContent = this.isMobile ? "Tap anywhere to resume" : "Press Esc/Space/P or click anywhere to resume"
+		}
+
 		this.canvas = document.getElementById("game-canvas") as HTMLCanvasElement
 		this.engine = new GameEngine(Date.now())
 		this.renderer = new GameRenderer(this.canvas)
@@ -227,8 +243,11 @@ class GameApp {
 		if (!localStorage.getItem("bp_tutorial_completed")) {
 			this.tutorialManager.start()
 		} else {
-			// Only start timer if tutorial is not active
-			this.syncHandCountdown(Date.now())
+			// Try to load saved state
+			if (!this.loadGameState()) {
+				// Only start timer if tutorial is not active and no save loaded
+				this.syncHandCountdown(Date.now())
+			}
 		}
 	}
 
@@ -264,6 +283,11 @@ class GameApp {
 	}
 
 	bindControls() {
+		// Prevent iOS Safari loupe/magnifier
+		this.canvas.addEventListener("touchstart", (e) => e.preventDefault(), { passive: false })
+		this.canvas.addEventListener("touchend", (e) => e.preventDefault(), { passive: false })
+		this.canvas.addEventListener("touchcancel", (e) => e.preventDefault(), { passive: false })
+
 		document.getElementById("restart-btn")?.addEventListener("click", () => {
 			this.restart()
 		})
@@ -277,6 +301,10 @@ class GameApp {
 		// Replay controls - just exit
 		document.getElementById("replay-exit")?.addEventListener("click", () => {
 			this.exitReplay()
+		})
+
+		document.getElementById("pause-overlay")?.addEventListener("click", () => {
+			this.resumeGame()
 		})
 
 		document.addEventListener("keydown", (e) => {
@@ -294,7 +322,11 @@ class GameApp {
 		// pause on focus lost
 		window.addEventListener("blur", () => {
 			if (!this.tutorialManager.isActive) {
-				this.pauseGame()
+				if (this.engine.isGameOver) {
+					this.saveGameState()
+				} else {
+					this.pauseGame()
+				}
 			}
 		})
 
@@ -380,7 +412,11 @@ class GameApp {
 				localStorage.clear()
 
 				// 4. Force Reload
-				window.location.reload()
+				// 4. Force Reload with cache busting
+				// Appending a timestamp forces the browser to fetch a fresh index.html from the server
+				const url = new URL(window.location.href)
+				url.searchParams.set("t", Date.now().toString())
+				window.location.href = url.toString()
 			}
 		})
 	}
@@ -399,6 +435,11 @@ class GameApp {
 		this.lastHandGeneration = -1
 		this.timerPanic = false
 
+		if (this.restartButtonTimeout) {
+			clearTimeout(this.restartButtonTimeout)
+			this.restartButtonTimeout = null
+		}
+
 		if (this.tutorialManager.isActive) {
 			this.tutorialManager["endTutorial"]() // Accessing private valid in runtime but TS might complain? Main is TS.
 			// Wait, endTutorial is private in TutorialManager?
@@ -412,6 +453,8 @@ class GameApp {
 			// Assume I fix TutorialManager first.
 			return
 		}
+
+		localStorage.removeItem("bp_save_state")
 
 		this.engine.reset(Date.now())
 		if (this.DEBUG_SPAWN_POWERUP_ON_START) {
@@ -427,6 +470,13 @@ class GameApp {
 		this.lastPlaceability = []
 
 		document.getElementById("game-over-overlay")?.classList.add("hidden")
+		document.getElementById("highscore-notification")?.classList.add("hidden")
+		document.getElementById("game-over-highscore-label")?.classList.add("hidden")
+
+		// Set prior best score to current best for the new session
+		this.priorBestScore = this.engine.bestScore
+		this.highScoreNotificationShown = false
+
 		this.updateUI()
 	}
 
@@ -444,18 +494,120 @@ class GameApp {
 		}
 	}
 
+	saveGameState() {
+		// Don't save if in tutorial or replay (saving game over state is allowed)
+		if (this.tutorialManager.isActive || this.isInReplayMode) {
+			return
+		}
+
+		const state: SavedAppState = {
+			engine: this.engine.serialize(),
+			isPaused: this.isPaused,
+			pauseStartedAt: this.pauseStartedAt,
+			handDeadline: this.handDeadline,
+			lastHandGeneration: this.lastHandGeneration,
+			timerPanic: this.timerPanic,
+			timestamp: Date.now(),
+			priorBestScore: this.priorBestScore,
+			highScoreNotificationShown: this.highScoreNotificationShown,
+		}
+
+		localStorage.setItem("bp_save_state", JSON.stringify(state))
+	}
+
+	loadGameState(): boolean {
+		const json = localStorage.getItem("bp_save_state")
+		if (!json) return false
+
+		try {
+			const state = JSON.parse(json) as SavedAppState
+			const now = Date.now()
+			const shift = now - state.timestamp
+
+			// Restore Engine
+			this.engine.deserialize(state.engine)
+			this.engine.shiftTime(shift)
+
+			// Restore App State
+			this.isPaused = state.isPaused
+			this.pauseStartedAt = state.pauseStartedAt ? state.pauseStartedAt + shift : null
+			this.handDeadline = state.handDeadline ? state.handDeadline + shift : null
+			this.lastHandGeneration = state.lastHandGeneration
+			this.timerPanic = state.timerPanic
+
+			this.priorBestScore = state.priorBestScore ?? this.engine.bestScore
+			this.highScoreNotificationShown = state.highScoreNotificationShown ?? false
+
+			// If checking paused state, ensure UI reflects it
+			if (this.isPaused) {
+				document.getElementById("pause-overlay")?.classList.remove("hidden")
+				const btn = document.getElementById("pause-btn")
+				if (btn) btn.textContent = "▶"
+			}
+
+			// Ensure used quotes are synced if engine changed seed?
+			// No, used quotes are separate.
+
+			// Update UI
+			this.updateUI()
+
+			return true
+		} catch (e) {
+			console.error("Failed to load game state", e)
+			return false
+		}
+	}
+
 	updateUI() {
 		document.getElementById("current-score")!.textContent = this.engine.score.toString()
 		this.saveHighScore() // Check constantly or delta
 
-		if (this.engine.isGameOver) {
-			document.getElementById("game-over-overlay")?.classList.remove("hidden")
-			document.getElementById("final-score")!.textContent = this.engine.score.toString()
+		// High Score Notification Check
+		// We use priorBestScore to check if we've surpassed the session start high score
+		// If priorBestScore is 0, we trigger on the first score > 0
+		if (!this.highScoreNotificationShown && this.engine.score > this.priorBestScore && (this.priorBestScore > 0 || this.engine.score > 0)) {
+			this.showHighScoreNotification()
+			this.highScoreNotificationShown = true
+		}
 
-			// Display a random quote
-			const quoteElement = document.getElementById("game-over-quote")
-			if (quoteElement) {
-				quoteElement.textContent = this.getRandomUnusedQuote()
+		if (this.engine.isGameOver) {
+			const overlay = document.getElementById("game-over-overlay")
+			// Only run transition logic if overlay was effectively hidden (or we are initializing)
+			if (overlay && overlay.classList.contains("hidden")) {
+				overlay.classList.remove("hidden")
+				document.getElementById("final-score")!.textContent = this.engine.score.toString()
+
+				// Show High Score Label if we beat the prior best
+				const highscoreLabel = document.getElementById("game-over-highscore-label")
+				if (highscoreLabel) {
+					if (this.engine.score > this.priorBestScore) {
+						highscoreLabel.classList.remove("hidden")
+					} else {
+						highscoreLabel.classList.add("hidden")
+					}
+				}
+
+				// Display a random quote
+				const quoteElement = document.getElementById("game-over-quote")
+				let quoteLength = 0
+				if (quoteElement) {
+					const quote = this.getRandomUnusedQuote()
+					quoteElement.textContent = quote
+					quoteLength = quote.length
+				}
+
+				// Hide Restart Button and show it after a delay
+				const restartBtn = document.getElementById("restart-btn")
+				if (restartBtn) {
+					restartBtn.classList.add("hidden")
+					if (this.restartButtonTimeout) clearTimeout(this.restartButtonTimeout)
+
+					// Delay based on reading time: .5s base + 10ms per character
+					const delay = Math.min(2000, 500 + quoteLength * 10)
+					this.restartButtonTimeout = setTimeout(() => {
+						restartBtn.classList.remove("hidden")
+					}, delay)
+				}
 			}
 		}
 
@@ -557,16 +709,8 @@ class GameApp {
 	private endGameDueToTimeout() {
 		this.engine.isGameOver = true
 		this.handDeadline = null
-		document.getElementById("game-over-overlay")?.classList.remove("hidden")
-		document.getElementById("final-score")!.textContent = this.engine.score.toString()
-
-		// Display a random quote
-		const quoteElement = document.getElementById("game-over-quote")
-		if (quoteElement) {
-			quoteElement.textContent = this.getRandomUnusedQuote()
-		}
-
 		this.updateUI()
+		this.saveGameState()
 	}
 
 	private positionTimerBars() {
@@ -605,6 +749,7 @@ class GameApp {
 		document.getElementById("pause-overlay")?.classList.remove("hidden")
 		const btn = document.getElementById("pause-btn")
 		if (btn) btn.textContent = "▶"
+		this.saveGameState()
 	}
 
 	private resumeGame() {
@@ -784,7 +929,9 @@ class GameApp {
 		const index = this.engine.currentShapes.indexOf(this.dragShape)
 
 		if (index !== -1 && this.engine.canPlace(this.dragShape, r, c)) {
-			const result = this.engine.place(index, r, c)
+			const result = this.engine.place(index, r, c, {
+				isTutorial: this.tutorialManager.isActive,
+			})
 			if (result.valid) {
 				// Spawn animations for cleared cells
 				if (result.clearedCells && result.clearedCells.length > 0) {
@@ -793,12 +940,21 @@ class GameApp {
 					})
 				}
 
+				if (result.moveMultiplier && result.moveMultiplier > 1) {
+					const { boardRect } = this.renderer.layout
+					const x = boardRect.x + boardRect.w / 2
+					// Position near the top of the board (15% down) so it's out of the way
+					const y = boardRect.y + boardRect.h * 0.15
+					this.renderer.addEffect(new FloatingTextEffect(x, y, `Quick! x${result.moveMultiplier}`))
+				}
+
 				// Tutorial Hook
 				if (this.tutorialManager.isActive) {
 					this.tutorialManager.onMove(result)
 				}
 
 				this.updateUI()
+				this.saveGameState()
 			}
 		}
 
@@ -971,6 +1127,24 @@ class GameApp {
 		if (moveEl) moveEl.textContent = (moveIndex + 1).toString()
 		if (totalEl) totalEl.textContent = totalMoves.toString()
 		if (scoreEl) scoreEl.textContent = score.toString()
+	}
+
+	private showHighScoreNotification() {
+		const el = document.getElementById("highscore-notification")
+		if (!el) return
+
+		// Reset animation by removing and re-adding element or class
+		// Force reflow
+		el.classList.remove("hidden")
+		el.style.animation = "none"
+		el.offsetHeight /* trigger reflow */
+		el.style.animation = "slideDownFadeOut 3s forwards"
+
+		// Set a timeout to hide it again ensures it doesn't block anything indefinitely,
+		// though CSS handles opacity.
+		setTimeout(() => {
+			el.classList.add("hidden")
+		}, 3000)
 	}
 }
 
