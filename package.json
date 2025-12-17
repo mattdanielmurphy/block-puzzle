@@ -12,6 +12,7 @@
     "start": "npm run build && npx http-server dist -c-1 -p 8000"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.88.0",
     "typescript": "^5.9.3"
   }
 }
