@@ -864,7 +864,7 @@ class GameApp {
 		this.scoreSubmitted = true
 
 		// 1. Get replay state (includes seed and actions)
-		const replayState = this.engine.replayManager.getReplayState(this.engine.score, VERSION)
+		const replayState = this.engine.replayManager.getReplayState(this.engine.score)
 
 		// 2. Store runId and seed before clearing to prevent resubmission
 		const runId = this.runId
@@ -1508,7 +1508,7 @@ class GameApp {
 
 	startReplay(): void {
 		// Get replay state from current game
-		const replayState = this.engine.replayManager.getReplayState(this.engine.score, VERSION)
+		const replayState = this.engine.replayManager.getReplayState(this.engine.score)
 
 		// Logs the replay for export purposes as requested
 		console.log("Replay Data", JSON.stringify(replayState))
