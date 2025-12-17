@@ -3,7 +3,7 @@
 // and potentially checking against a database to prevent replay attacks
 // or ensure token uniqueness/validity.
 
-import { sha256 } from "./crypto.js" // Assuming a crypto.js in same _lib
+import { sha256 } from "./crypto" // Assuming a crypto.ts in same _lib
 
 const SECRET_KEY = process.env.RUN_TOKEN_SECRET || "super-secret-default-key-for-dev"
 const TOKEN_EXPIRATION_MS = 1000 * 60 * 60 * 24 // 24 hours

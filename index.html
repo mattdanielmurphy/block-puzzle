@@ -129,7 +129,7 @@
 
 				// Save name when input loses focus (blur). The 'input' event was too aggressive.
 				nameInput.addEventListener("blur", (e) => {
-					const value = (e.target as HTMLInputElement).value.trim()
+					const value = (e.target).value.trim()
 					if (value) {
 						localStorage.setItem("bp_player_name", value)
 					} else {

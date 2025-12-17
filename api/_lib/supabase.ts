@@ -1,10 +1,10 @@
-import { createClient } from "@supabase/supabase-js"
+import { createClient, SupabaseClient } from "@supabase/supabase-js"
 
 // Use environment variables for Supabase URL and Key
 const supabaseUrl = process.env.SUPABASE_URL
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
-let supabase = null
+let supabase: SupabaseClient | null = null
 
 if (supabaseUrl && supabaseServiceRoleKey) {
 	supabase = createClient(supabaseUrl, supabaseServiceRoleKey)

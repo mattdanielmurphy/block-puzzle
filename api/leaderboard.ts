@@ -3,8 +3,8 @@ import * as rateLimit from "./_lib/rateLimit"
 import * as validation from "./_lib/validation"
 
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { errorJson, json } from "./_lib/http.js"
-import { supabase } from "./_lib/supabase.js"
+import { errorJson, json } from "./_lib/http"
+import { supabase } from "./_lib/supabase"
 
 // Database schema assumed for this endpoint:
 //

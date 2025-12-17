@@ -12,27 +12,34 @@ const ASSETS_TO_COPY = [
 	{ src: "assets", dest: "assets", isDir: true },
 ]
 
-const packageJson = require("./package.json")
-const homepage = packageJson.homepage || ""
-
 console.log("Build started...")
-if (homepage) {
-	console.log(`Using homepage base path: ${homepage}`)
-}
 
 // 1. Clean dist (optional, but tsc doesn't clear it)
 // We won't strictly delete it to be safe, but tsc overwrites.
 
-// 2. Run TypeScript Compiler
-console.log("Compiling TypeScript...")
+// 2. Run TypeScript Compiler for client-side code
+console.log("Compiling client-side TypeScript...")
 try {
-	execSync("npx tsc", { stdio: "inherit" })
+	execSync("npx tsc --build tsconfig.web.json", { stdio: "inherit" })
 } catch (e) {
-	console.error("TypeScript compilation failed.")
+	console.error("Client-side TypeScript compilation failed.")
 	process.exit(1)
 }
 
-// 3. Copy Assets
+// 3. Run TypeScript Compiler for API routes
+console.log("Compiling API routes TypeScript...")
+try {
+	// Clean up dist/api first to prevent conflicts from previous builds if module types changed
+	if (fs.existsSync(path.join(DIST_DIR, "api"))) {
+		fs.rmSync(path.join(DIST_DIR, "api"), { recursive: true, force: true })
+	}
+	execSync("npx tsc --build tsconfig.api.json", { stdio: "inherit" })
+} catch (e) {
+	console.error("API routes TypeScript compilation failed.")
+	process.exit(1)
+}
+
+// 4. Copy Assets
 console.log("Copying assets...")
 if (!fs.existsSync(DIST_DIR)) {
 	fs.mkdirSync(DIST_DIR)
@@ -56,27 +63,12 @@ ASSETS_TO_COPY.forEach((item) => {
 
 			if (item.src === "index.html") {
 				const timestamp = Date.now()
-				// Fix script path: "dist/src/main.js" -> "src/main.js" and add cache buster
+				// Fix script path for the built bundle and add cache buster.
+				// Use a *relative* URL so this works whether the site is served from / or a subpath (e.g. /dist/ or GitHub Pages).
 				content = content.replace('src="dist/src/main.js"', `src="src/main.js?v=${timestamp}"`)
 
-				// Add cache buster to CSS
+				// Add cache buster to CSS (also relative for the same reason)
 				content = content.replace('href="styles.css"', `href="styles.css?v=${timestamp}"`)
-
-				// Inject base tag if homepage is set
-				// Inject dynamic base tag script to support both root and subdirectory deployment
-				// and handle missing trailing slashes (e.g. /blocks vs /blocks/)
-				const baseScript = `<script>
-    (function() {
-        var path = window.location.pathname;
-        if (!path.endsWith('/') && path.split('/').pop().indexOf('.') === -1) {
-            path += '/';
-        } else if (path.split('/').pop().indexOf('.') !== -1) {
-            path = path.substring(0, path.lastIndexOf('/') + 1);
-        }
-        document.write('<base href="' + path + '" />');
-    })();
-</script>`
-				content = content.replace("<head>", `<head>\n    ${baseScript}`)
 			} else if (item.src === "service-worker.js") {
 				const timestamp = Date.now()
 				// Fix paths: "./dist/src/..." -> "./src/..."

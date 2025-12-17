@@ -19,6 +19,8 @@ export interface ReplayState {
     finalScore: number;
 }
 
+const LOCAL_STORAGE_KEY = "block-puzzle-replay-state";
+
 export class ReplayManager {
     private moves: GameMove[] = [];
     private seed: number;
@@ -56,6 +58,35 @@ export class ReplayManager {
             moves: [...this.moves],
             finalScore
         };
+    }
+    
+    saveReplayToLocalStorage(finalScore: number): void {
+        const replayState = this.getReplayState(finalScore);
+        try {
+            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(replayState));
+        } catch (e) {
+            console.error("Error saving replay to local storage:", e);
+        }
+    }
+    
+    static loadReplayFromLocalStorage(): ReplayState | null {
+        try {
+            const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
+            if (stored) {
+                return JSON.parse(stored) as ReplayState;
+            }
+        } catch (e) {
+            console.error("Error loading replay from local storage:", e);
+        }
+        return null;
+    }
+    
+    static clearReplayFromLocalStorage(): void {
+        try {
+            localStorage.removeItem(LOCAL_STORAGE_KEY);
+        } catch (e) {
+            console.error("Error clearing replay from local storage:", e);
+        }
     }
     
     clear(): void {

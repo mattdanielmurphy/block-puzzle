@@ -6,7 +6,7 @@ import { GameRenderer } from "./ui/renderer.js"
 import { InputManager } from "./ui/input.js"
 import { PowerupType } from "./engine/powerups.js"
 import { ReplayPlayer } from "./ui/replay-player.js"
-import { ReplayState } from "./engine/replay.js"
+import { ReplayManager, ReplayState } from "./engine/replay.js"
 import { THEME } from "./ui/theme.js"
 import { TutorialManager } from "./ui/tutorial.js"
 import { VERSION } from "./version.js"
@@ -265,11 +265,20 @@ class GameApp {
 		if (!localStorage.getItem("bp_tutorial_completed")) {
 			this.tutorialManager.start()
 		} else {
-			// Try to load saved state
-			if (!this.loadGameState()) {
+			const loadedReplay = ReplayManager.loadReplayFromLocalStorage();
+			if (loadedReplay) {
+				// If a replay state was loaded, initialize the engine with it
+				this.engine.loadReplay(loadedReplay);
+				// Then start replay mode
+				this.startReplay();
+				// Ensure game state doesn't try to overwrite the replay, and timer/etc is handled
+				this.runInitialized = true;
+				// The game is already over if a replay is loaded (it's a game-over replay)
+				this.engine.isGameOver = true;
+				this.updateUI(); // To show game-over overlay
+				this.syncHandCountdown(Date.now()); // Will be null in replay mode
+			} else if (!this.loadGameState()) {
 				// No saved state and tutorial already completed: start a fresh run
-				// immediately. Token fetching happens in the background and does
-				// not affect or reset gameplay.
 				this.startNewRun()
 			} else {
 				// If a game state was loaded, sync the countdown (it was stopped on save/pause)

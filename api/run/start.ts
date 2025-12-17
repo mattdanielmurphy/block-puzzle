@@ -1,9 +1,9 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { errorJson, json } from "../_lib/http.js"
-import * as ip from "../_lib/ip.js"
-import * as rateLimit from "../_lib/rateLimit.js"
-import * as validation from "../_lib/validation.js"
-import { generateRunToken } from "../_lib/runToken.js"
+import { errorJson, json } from "../_lib/http"
+import * as ip from "../_lib/ip"
+import * as rateLimit from "../_lib/rateLimit"
+import * as validation from "../_lib/validation"
+import { generateRunToken } from "../_lib/runToken"
 
 // `crypto` is a global in Node.js >= 15.0.0. Vercel's Node.js runtime for
 // Serverless Functions supports this.
