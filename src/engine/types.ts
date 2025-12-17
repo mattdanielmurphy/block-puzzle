@@ -66,16 +66,3 @@ export interface SavedAppState {
 	priorBestScore?: number
 	highScoreNotificationShown?: boolean
 }
-
-export type ReplayActionType = "place"
-
-export interface ReplayAction {
-	tick: number // Sequence number of the action
-	type: ReplayActionType
-	timestamp: number // Relative to game start (or absolute, but relative is better for replay)
-	payload: {
-		shapeIndex: number
-		r: number
-		c: number
-	}
-}

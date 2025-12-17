@@ -27,9 +27,9 @@ function testInitialState() {
 
 function testPlacement() {
     const game = new GameEngine(12345);
-    // Force a specific shape for testing: 1x1 (first shape definition)
-    const s1 = ALL_SHAPES.find(s => s.cells.length === 1);
-    if (!s1) throw new Error("Single-cell shape not found");
+    // Force a specific shape for testing: 1x1
+    const s1 = ALL_SHAPES.find(s => s.id === '1x1');
+    if (!s1) throw new Error("1x1 shape not found");
     game.currentShapes[0] = s1;
 
     const result = game.place(0, 4, 4);
@@ -45,8 +45,8 @@ function testClearing() {
     for(let c=0; c<8; c++) game.grid[0 * 9 + c] = 1;
     
     // Use a 1x1 to fill the gap at (0, 8)
-    const s1 = ALL_SHAPES.find(s => s.cells.length === 1);
-    if (!s1) throw new Error("Single-cell shape not found");
+    const s1 = ALL_SHAPES.find(s => s.id === '1x1');
+    if (!s1) throw new Error("1x1 shape not found");
     game.currentShapes[0] = s1;
 
     const result = game.place(0, 0, 8);
@@ -64,8 +64,8 @@ function testSimultaneousClear() {
     // Fill col 0 except 0,0
     for(let r=1; r<9; r++) game.grid[r * 9 + 0] = 1;
 
-    const s1 = ALL_SHAPES.find(s => s.cells.length === 1);
-    if(!s1) throw new Error("Single-cell shape not found");
+    const s1 = ALL_SHAPES.find(s => s.id === '1x1');
+    if(!s1) throw new Error("1x1 shape not found");
     game.currentShapes[0] = s1;
 
     const result = game.place(0, 0, 0);
@@ -89,8 +89,8 @@ function testGameOver() {
     // Clear one spot
     game.grid[0] = 0;
     // Ensure we have a 1x1
-    const s1 = ALL_SHAPES.find(s => s.cells.length === 1);
-    if(!s1) throw new Error("Single-cell shape not found");
+    const s1 = ALL_SHAPES.find(s => s.id === '1x1');
+    if(!s1) throw new Error("1x1 shape not found");
     game.currentShapes = [s1, null, null];
 
     assertEqual(!game.canPlaceAny(), false, "Should not be game over if 1x1 fits");

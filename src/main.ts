@@ -130,10 +130,9 @@ class GameApp {
 	private handTimerRatio: number | null = null
 
 	// Replay State
-	   private replayPlayer: ReplayPlayer | null = null
-	   private isInReplayMode: boolean = false
-	   private currentReplayState: ReplayState | null = null
-	   private expectedReplayScore: number | null = null
+	private replayPlayer: ReplayPlayer | null = null
+	private isInReplayMode: boolean = false
+
 	// Tutorial State
 	tutorialManager: TutorialManager
 
@@ -150,17 +149,10 @@ class GameApp {
 	// High Score Tracking
 	private priorBestScore: number = 0
 	private highScoreNotificationShown: boolean = false
-	
+
 	// Device Detection
 	private isMobile: boolean = false
-	private gameOverActionsTimeout: any = null
-	private runId: string | null = null
-	private gameSeed: number | null = null
-	private scoreSubmitted: boolean = false // Flag to prevent duplicate submissions
-	private runInitialized: boolean = false // Prevent timer/start logic before the real run begins
-
-	// Leaderboard State
-	private lastSubmittedEntry: { name: string; score: number } | null = null
+	private restartButtonTimeout: any = null
 
 	constructor() {
 		this.displayVersion()
@@ -173,21 +165,7 @@ class GameApp {
 		}
 
 		this.canvas = document.getElementById("game-canvas") as HTMLCanvasElement
-		const urlParams = new URLSearchParams(window.location.search)
-		const seedParam = urlParams.get("seed")
-		
-		// Generate runId and seed using crypto.getRandomValues()
-		this.runId = this.generateRunId()
-		if (seedParam) {
-			this.gameSeed = Number(seedParam)
-		} else {
-			this.gameSeed = this.generateSeed()
-		}
-		
-		const seed = this.gameSeed
-		this.engine = new GameEngine(seed)
-		// The game starts immediately with a locally generated seed and runId.
-		// These are used for score submission and must NOT reset or restart the current run.
+		this.engine = new GameEngine(Date.now())
 		this.renderer = new GameRenderer(this.canvas)
 
 		if (this.DEBUG_SPAWN_POWERUP_ON_START) {
@@ -267,13 +245,7 @@ class GameApp {
 		} else {
 			// Try to load saved state
 			if (!this.loadGameState()) {
-				// No saved state and tutorial already completed: start a fresh run
-				// immediately. Token fetching happens in the background and does
-				// not affect or reset gameplay.
-				this.startNewRun()
-			} else {
-				// If a game state was loaded, sync the countdown (it was stopped on save/pause)
-				this.runInitialized = true
+				// Only start timer if tutorial is not active and no save loaded
 				this.syncHandCountdown(Date.now())
 			}
 		}
@@ -284,27 +256,6 @@ class GameApp {
 		if (el) {
 			el.textContent = `v${VERSION}`
 		}
-	}
-
-	/**
-	 * Generate a random runId using crypto.getRandomValues()
-	 */
-	private generateRunId(): string {
-		const array = new Uint8Array(16)
-		crypto.getRandomValues(array)
-		// Convert to hex string
-		return Array.from(array)
-			.map((b) => b.toString(16).padStart(2, "0"))
-			.join("")
-	}
-
-	/**
-	 * Generate a random uint32 seed using crypto.getRandomValues()
-	 */
-	private generateSeed(): number {
-		const array = new Uint32Array(1)
-		crypto.getRandomValues(array)
-		return array[0]
 	}
 
 	private getRandomUnusedQuote(): string {
@@ -331,63 +282,6 @@ class GameApp {
 		return GAME_OVER_QUOTES[randomIndex]
 	}
 
-	private updateSubmissionUI(state: "idle" | "submitting" | "success" | "error", message?: string) {
-		const submitBtn = document.getElementById("submit-score-btn") as HTMLButtonElement | null
-		const statusEl = document.getElementById("submission-status-message")
-		const rankingEl = document.getElementById("leaderboard-ranking")
-
-		if (!submitBtn) return
-
-		switch (state) {
-			case "idle":
-				submitBtn.disabled = false
-				submitBtn.textContent = "Submit Score"
-				if (statusEl) {
-					statusEl.textContent = ""
-					statusEl.classList.add("hidden")
-				}
-				if (rankingEl) {
-					rankingEl.textContent = ""
-					rankingEl.classList.add("hidden")
-				}
-				break
-			case "submitting":
-				submitBtn.disabled = true
-				submitBtn.textContent = "Submitting..."
-				if (statusEl) {
-					statusEl.textContent = ""
-					statusEl.classList.add("hidden")
-				}
-				if (rankingEl) {
-					rankingEl.textContent = ""
-					rankingEl.classList.add("hidden")
-				}
-				break
-			case "success":
-				submitBtn.disabled = true
-				submitBtn.textContent = "Score submitted!"
-				if (statusEl) {
-					statusEl.textContent = ""
-					statusEl.classList.add("hidden")
-				}
-				// ranking is populated asynchronously once leaderboard is fetched
-				break
-			case "error":
-				// Allow player to start a new run even if submission failed
-				submitBtn.disabled = true
-				submitBtn.textContent = "Submit Score"
-				if (statusEl) {
-					statusEl.textContent = message || "Failed to submit score. You can start a new run and try again."
-					statusEl.classList.remove("hidden")
-				}
-				if (rankingEl) {
-					rankingEl.textContent = ""
-					rankingEl.classList.add("hidden")
-				}
-				break
-		}
-	}
-
 	bindControls() {
 		// Prevent iOS Safari loupe/magnifier
 		this.canvas.addEventListener("touchstart", (e) => e.preventDefault(), { passive: false })
@@ -400,59 +294,20 @@ class GameApp {
 		document.getElementById("pause-btn")?.addEventListener("click", () => {
 			this.togglePause()
 		})
-		document.getElementById("submit-score-btn")?.addEventListener("click", () => {
-			this.attemptScoreSubmission()
-		})
-
-		document.getElementById("leaderboard-header-btn")?.addEventListener("click", () => {
-			this.openLeaderboard()
-		})
-
-		document.getElementById("leaderboard-gameover-btn")?.addEventListener("click", () => {
-			this.openLeaderboard()
-		})
-		
 		document.getElementById("replay-btn")?.addEventListener("click", () => {
 			this.startReplay()
 		})
 
-		    // Replay controls - just exit
-		    document.getElementById("replay-exit")?.addEventListener("click", () => {
-		      this.exitReplay()
-		    })
-		
-		    // Replay: copy JSON (debug)
-		    document.getElementById("replay-copy-json")?.addEventListener("click", async () => {
-		      if (!this.currentReplayState) return
-		      const json = JSON.stringify(this.currentReplayState)
-		      console.log("Replay Data", json)
-		
-		      try {
-		        await navigator.clipboard.writeText(json)
-		      } catch (e) {
-		        // Fallback for clipboard permission / unsupported environments
-		        window.prompt("Copy replay JSON:", json)
-		      }
-		    })
-		
-		    document.getElementById("pause-overlay")?.addEventListener("click", () => {
-		      this.resumeGame()
-		    })
-
-		document.getElementById("leaderboard-close-btn")?.addEventListener("click", () => {
-			this.closeLeaderboard()
+		// Replay controls - just exit
+		document.getElementById("replay-exit")?.addEventListener("click", () => {
+			this.exitReplay()
 		})
+
+		document.getElementById("pause-overlay")?.addEventListener("click", () => {
+			this.resumeGame()
+		})
+
 		document.addEventListener("keydown", (e) => {
-			if (e.key==='r' && !e.metaKey && !e.ctrlKey && !e.altKey) {
-				// make sure not in a text input field
-				const activeElement = document.activeElement
-				if (activeElement && activeElement.tagName.toLowerCase() === "input") {
-					return
-				}
-				this.restart()
-				e.preventDefault()
-				return
-			}
 			if (e.key === "Escape" || e.key === "p" || e.key === " ") {
 				// Don't toggle pause if settings modal is open (it has its own Escape handler)
 				const settingsModal = document.getElementById("settings-modal")
@@ -580,9 +435,9 @@ class GameApp {
 		this.lastHandGeneration = -1
 		this.timerPanic = false
 
-		if (this.gameOverActionsTimeout) {
-			clearTimeout(this.gameOverActionsTimeout)
-			this.gameOverActionsTimeout = null
+		if (this.restartButtonTimeout) {
+			clearTimeout(this.restartButtonTimeout)
+			this.restartButtonTimeout = null
 		}
 
 		if (this.tutorialManager.isActive) {
@@ -600,7 +455,11 @@ class GameApp {
 		}
 
 		localStorage.removeItem("bp_save_state")
-		this.scoreSubmitted = false // Reset submission state
+
+		this.engine.reset(Date.now())
+		if (this.DEBUG_SPAWN_POWERUP_ON_START) {
+			this.engine.spawnTestPowerup()
+		}
 		this.loadHighScore() // Load high score into the new engine
 		this.dragShape = null
 		this.dragPos = null
@@ -618,12 +477,7 @@ class GameApp {
 		this.priorBestScore = this.engine.bestScore
 		this.highScoreNotificationShown = false
 
-		// Start a fresh run (resets engine.isGameOver) before updating the UI.
-		// Note: startNewRun is async; don't immediately call updateUI() here because
-		// the engine may still be in a game-over state synchronously, which would
-		// cause updateUI() to re-show the game-over overlay. The render loop and
-		// subsequent state changes will naturally drive the UI.
-		this.startNewRun()
+		this.updateUI()
 	}
 
 	loadHighScore() {
@@ -704,265 +558,6 @@ class GameApp {
 		}
 	}
 
-	private attemptScoreSubmission(): void {
-		if (this.scoreSubmitted || this.engine.score <= 0) {
-			console.warn("Attempted to submit score but either already submitted or score is 0. Aborting.")
-			return
-		}
-
-		// Prefer the current value in the input field, falling back to persisted name or a default.
-		const nameInput = document.getElementById("player-name-input") as HTMLInputElement | null
-		let playerName = (nameInput?.value ?? "").trim()
-
-		if (!playerName) {
-			playerName = (localStorage.getItem("bp_player_name") ?? "Player").trim() || "Player"
-		}
-
-		// Persist the name so it's pre-filled next time.
-		if (playerName) {
-			localStorage.setItem("bp_player_name", playerName)
-		} else {
-			localStorage.removeItem("bp_player_name")
-		}
-
-		this.updateSubmissionUI("submitting")
-		this.submitScoreToLeaderboard(playerName)
-	}
-
-	// --- LEADERBOARD INTEGRATION ---
-	// Note: No longer fetching runToken from server. runId and seed are generated client-side.
-
-	private openLeaderboard() {
-		const modal = document.getElementById("leaderboard-modal")
-		if (!modal) return
-		modal.classList.remove("hidden")
-		this.fetchAndRenderLeaderboard()
-	}
-
-	private closeLeaderboard() {
-		const modal = document.getElementById("leaderboard-modal")
-		if (!modal) return
-		modal.classList.add("hidden")
-	}
-
-	private async fetchAndRenderLeaderboard() {
-		const loadingEl = document.getElementById("leaderboard-loading")
-		const errorEl = document.getElementById("leaderboard-error")
-		const verifiedList = document.getElementById("leaderboard-verified-list")
-
-		if (!verifiedList) return
-
-		verifiedList.innerHTML = ""
-
-		if (errorEl) {
-			errorEl.textContent = ""
-			errorEl.classList.add("hidden")
-			errorEl.classList.remove("error")
-		}
-		if (loadingEl) {
-			loadingEl.classList.remove("hidden")
-		}
-
-		try {
-			const resp = await fetch("/api/leaderboard?limit=20")
-			if (!resp.ok) {
-				throw new Error(`Leaderboard request failed with status ${resp.status}`)
-			}
-			const data: any = await resp.json()
-
-			const verified = Array.isArray(data?.verified) ? data.verified : []
-
-			const self = this.lastSubmittedEntry
-
-			verified.forEach((entry: any, index: number) => {
-				const li = document.createElement("li")
-				const isSelf = self && self.verified && entry.name === self.name && entry.score === self.score
-				if (isSelf) li.classList.add("leaderboard-self")
-
-				const rankSpan = document.createElement("span")
-				rankSpan.className = "leaderboard-rank"
-				rankSpan.textContent = String(index + 1)
-
-				const nameSpan = document.createElement("span")
-				nameSpan.className = "leaderboard-name"
-				nameSpan.textContent = entry.name ?? "???"
-
-				const scoreSpan = document.createElement("span")
-				scoreSpan.className = "leaderboard-score"
-				scoreSpan.textContent = String(entry.score ?? 0)
-
-				li.appendChild(rankSpan)
-				li.appendChild(nameSpan)
-				li.appendChild(scoreSpan)
-				verifiedList.appendChild(li)
-			})
-
-			this.updateRankingSummaryFromData(verified)
-		} catch (e) {
-			console.error("Failed to fetch leaderboard:", e)
-			if (errorEl) {
-				errorEl.textContent = "Leaderboard is currently unavailable. Please try again later."
-				errorEl.classList.remove("hidden")
-				errorEl.classList.add("error")
-			}
-		} finally {
-			if (loadingEl) {
-				loadingEl.classList.add("hidden")
-			}
-		}
-	}
-
-	private updateRankingSummaryFromData(verified: any[]) {
-		const el = document.getElementById("leaderboard-ranking")
-		if (!el) return
-
-		const self = this.lastSubmittedEntry
-		if (!self) {
-			el.textContent = ""
-			el.classList.add("hidden")
-			return
-		}
-
-		const idx = verified.findIndex((e) => e.name === self.name && e.score === self.score)
-		if (idx >= 0) {
-			const rank = idx + 1
-			el.textContent = `Your rank: #${rank} out of ${verified.length} shown.`
-			el.classList.remove("hidden")
-			return
-		}
-
-		el.textContent = ""
-		el.classList.add("hidden")
-	}
-
-	private async submitScoreToLeaderboard(name: string): Promise<void> {
-		console.log(`[Score Submit] Attempting to submit score ${this.engine.score} for user "${name}"...`)
-
-		// We require runId and seed for submission
-		if (!this.runId || this.gameSeed === null || this.scoreSubmitted) {
-			console.warn("Cannot submit score: runId or seed is missing, or score already submitted. Aborting.")
-			return
-		}
-
-		this.scoreSubmitted = true
-
-		// 1. Get replay state (includes seed and actions)
-		const replayState = this.engine.replayManager.getReplayState(this.engine.score, VERSION)
-
-		// 2. Store runId and seed before clearing to prevent resubmission
-		const runId = this.runId
-		const seed = this.gameSeed
-		this.runId = null
-		this.gameSeed = null
-		// Do NOT clear scoreSubmitted.
-
-		try {
-			const payload = {
-				runId: runId,
-				name: name,
-				score: this.engine.score,
-				replay: replayState,
-			}
-			console.log("[Score Submit] Payload:", payload)
-
-			const response = await fetch("/api/leaderboard/submit", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify(payload),
-			})
-			
-			const status = response.status
-			const url = response.url
-			const contentType = response.headers.get("content-type") || ""
-
-			let rawBody: string | null = null
-			let data: any = null
-
-			try {
-				// Always read as text first so we can safely inspect/log even if it's not JSON.
-				rawBody = await response.text()
-				if (contentType.includes("application/json")) {
-					try {
-						data = JSON.parse(rawBody)
-					} catch (jsonErr) {
-						console.error("[Score Submit] Failed to parse JSON response:", jsonErr, {
-							status,
-							url,
-							contentType,
-							rawBodySnippet: rawBody.slice(0, 200),
-						})
-					}
-				}
-			} catch (readErr) {
-				console.error("[Score Submit] Failed to read response body:", readErr, {
-					status,
-					url,
-					contentType,
-				})
-			}
-
-			if (response.ok) {
-				if (data && typeof data === "object") {
-					console.log("[Score Submit] Submission successful.", {
-						status,
-						url,
-						apiStatus: (data as any).status,
-					})
-
-					const statusField = (data as any).status
-					const entry = (data as any).entry
-					if (entry && typeof entry === "object") {
-						this.lastSubmittedEntry = {
-							name: String((entry as any).name ?? name),
-							score: Number((entry as any).score ?? this.engine.score),
-						}
-					} else {
-						this.lastSubmittedEntry = {
-							name,
-							score: this.engine.score,
-						}
-					}
-				} else {
-					console.log("[Score Submit] Submission successful with non-JSON or unexpected body.", {
-						status,
-						url,
-						contentType,
-						rawBodySnippet: rawBody ? rawBody.slice(0, 200) : null,
-					})
-					this.lastSubmittedEntry = {
-						name,
-						score: this.engine.score,
-						verified: false,
-					}
-				}
-				this.updateSubmissionUI("success")
-
-				// Auto-open leaderboard after a short delay so user can see their rank.
-				setTimeout(() => {
-					this.openLeaderboard()
-				}, 400)
-			} else {
-				console.error("[Score Submit] Submission failed.", {
-					status,
-					url,
-					contentType,
-					payload,
-					jsonBody: data,
-					rawBodySnippet: rawBody ? rawBody.slice(0, 200) : null,
-				})
-				const errorMessage =
-					data && typeof data === "object" && (data as any).error
-						? `Failed to submit score: ${(data as any).error}`
-						: "Failed to submit score. You can start a new run and try again."
-				this.updateSubmissionUI("error", errorMessage)
-			}
-		} catch (e) {
-			console.error("Error submitting score (network or unexpected):", e)
-			this.updateSubmissionUI("error", "Network error while submitting score. You can start a new run and try again.")
-		}
-	}
-	// -----------------------------------------------
-
 	updateUI() {
 		document.getElementById("current-score")!.textContent = this.engine.score.toString()
 		this.saveHighScore() // Check constantly or delta
@@ -980,8 +575,6 @@ class GameApp {
 			// Only run transition logic if overlay was effectively hidden (or we are initializing)
 			if (overlay && overlay.classList.contains("hidden")) {
 				overlay.classList.remove("hidden")
-				// Reset submission UI each time the game over screen is first shown
-				this.updateSubmissionUI("idle")
 				document.getElementById("final-score")!.textContent = this.engine.score.toString()
 
 				// Show High Score Label if we beat the prior best
@@ -1004,21 +597,16 @@ class GameApp {
 				}
 
 				// Hide Restart Button and show it after a delay
-				const gameOverActions = document.getElementById("game-over-actions")
-				if (gameOverActions) {
-					gameOverActions.classList.add("hidden")
-					if (this.gameOverActionsTimeout) clearTimeout(this.gameOverActionsTimeout)
+				const restartBtn = document.getElementById("restart-btn")
+				if (restartBtn) {
+					restartBtn.classList.add("hidden")
+					if (this.restartButtonTimeout) clearTimeout(this.restartButtonTimeout)
 
 					// Delay based on reading time: .5s base + 10ms per character
 					const delay = Math.min(2000, 500 + quoteLength * 10)
-					this.gameOverActionsTimeout = setTimeout(() => {
-						gameOverActions.classList.remove("hidden")
+					this.restartButtonTimeout = setTimeout(() => {
+						restartBtn.classList.remove("hidden")
 					}, delay)
-
-					// Submit score to leaderboard (only once, if score > 0)
-					if (!this.scoreSubmitted && this.engine.score > 0) {
-						this.attemptScoreSubmission()
-					}
 				}
 			}
 		}
@@ -1067,12 +655,6 @@ class GameApp {
 	}
 
 	private syncHandCountdown(now: number) {
-		// Don't run countdown logic until a real run has been initialized.
-		if (!this.runInitialized) {
-			this.updateCountdownUI(null)
-			return
-		}
-
 		if (this.isInReplayMode) {
 			this.updateCountdownUI(null)
 			return
@@ -1492,22 +1074,16 @@ class GameApp {
 
 	startReplay(): void {
 		// Get replay state from current game
-		const replayState = this.engine.replayManager.getReplayState(this.engine.score, VERSION)
+		const replayState = this.engine.replayManager.getReplayState(this.engine.score)
 
-		// Logs the replay for export purposes as requested
-		console.log("Replay Data:", JSON.stringify(replayState))
-
-		if (replayState.actions.length === 0) {
+		if (replayState.moves.length === 0) {
 			alert("No moves to replay!")
 			return
 		}
 
-		    // Store replay state for UI verification + copy button
-		    this.currentReplayState = replayState
-		    this.expectedReplayScore = replayState.finalScore
-		
-		    // Create replay player
-		    this.replayPlayer = new ReplayPlayer(replayState, this.renderer);		this.isInReplayMode = true
+		// Create replay player
+		this.replayPlayer = new ReplayPlayer(replayState, this.renderer)
+		this.isInReplayMode = true
 
 		// Hide game over overlay and HEADER, show replay overlay
 		document.querySelector("header")?.classList.add("hidden")
@@ -1529,8 +1105,6 @@ class GameApp {
 		}
 
 		this.isInReplayMode = false
-		this.currentReplayState = null
-		this.expectedReplayScore = null
 
 		// Hide replay overlay, show game over overlay and restore HEADER
 		document.getElementById("replay-overlay")?.classList.add("hidden")
@@ -1549,26 +1123,10 @@ class GameApp {
 		const moveEl = document.getElementById("replay-move")
 		const totalEl = document.getElementById("replay-total")
 		const scoreEl = document.getElementById("replay-score")
-		const expectedEl = document.getElementById("replay-expected-score")
-		const resultEl = document.getElementById("replay-result")
 
 		if (moveEl) moveEl.textContent = (moveIndex + 1).toString()
 		if (totalEl) totalEl.textContent = totalMoves.toString()
 		if (scoreEl) scoreEl.textContent = score.toString()
-
-		if (expectedEl) {
-			expectedEl.textContent =
-				this.expectedReplayScore === null ? "-" : this.expectedReplayScore.toString()
-		}
-
-		const atEnd = totalMoves > 0 && moveIndex === totalMoves - 1
-		if (resultEl) {
-			if (!atEnd || this.expectedReplayScore === null) {
-				resultEl.textContent = ""
-			} else {
-				resultEl.textContent = score === this.expectedReplayScore ? "PASS" : "FAIL"
-			}
-		}
 	}
 
 	private showHighScoreNotification() {
@@ -1588,100 +1146,6 @@ class GameApp {
 			el.classList.add("hidden")
 		}, 3000)
 	}
-
-	private async submitScore() {
-		if (!this.runId || this.gameSeed === null) {
-			console.warn("Cannot submit score: runId or gameSeed is missing.")
-			return
-		}
-
-		const score = this.engine.score
-		const name = "Anonymous" // Placeholder for now. User input can be added later.
-		const replay = this.engine.replayManager.getReplayState(score, VERSION)
-
-		try {
-			const response = await fetch("/api/leaderboard/submit", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({
-					runId: this.runId,
-					name,
-					score,
-					replay: replay,
-				}),
-			})
-
-			const status = response.status
-			const url = response.url
-			const contentType = response.headers.get("content-type") || ""
-
-			let rawBody: string | null = null
-			let data: any = null
-
-			try {
-				rawBody = await response.text()
-				if (contentType.includes("application/json")) {
-					try {
-						data = JSON.parse(rawBody)
-					} catch (jsonErr) {
-						console.error("[Legacy Score Submit] Failed to parse JSON response:", jsonErr, {
-							status,
-							url,
-							contentType,
-							rawBodySnippet: rawBody.slice(0, 200),
-						})
-					}
-				}
-			} catch (readErr) {
-				console.error("[Legacy Score Submit] Failed to read response body:", readErr, {
-					status,
-					url,
-					contentType,
-				})
-			}
-
-			if (!response.ok) {
-				console.error("[Legacy Score Submit] Submission failed.", {
-					status,
-					url,
-					contentType,
-					jsonBody: data,
-					rawBodySnippet: rawBody ? rawBody.slice(0, 200) : null,
-				})
-				throw new Error(`Leaderboard submission failed with status ${status}`)
-			}
-
-			console.log("[Legacy Score Submit] Submission successful.", {
-				status,
-				url,
-				contentType,
-				jsonBody: data,
-				rawBodySnippet: rawBody ? rawBody.slice(0, 200) : null,
-			})
-		} catch (e) {
-			console.error("Error submitting score to leaderboard (legacy path):", e)
-		}
-	}
-
-	async startNewRun() {
-		// Reset submission state and generate new runId/seed for the new run.
-		this.scoreSubmitted = false
-		this.runId = this.generateRunId()
-		this.gameSeed = this.generateSeed()
-
-		// Start the new run immediately with the generated seed.
-		const seed = this.gameSeed
-		this.engine.reset(seed)
-		if (this.DEBUG_SPAWN_POWERUP_ON_START) {
-			this.engine.spawnTestPowerup()
-		}
-
-		// Mark the run as active and start the hand timer based on the engine's handGeneration.
-		this.runInitialized = true
-		this.updateCountdownUI(null)
-		this.syncHandCountdown(Date.now())
-	}
-
 }
 
 // Boot

@@ -3,4 +3,3 @@ dist
 .DS_Store
 .gemini
 .vercel
-.env*.local

@@ -57,6 +57,8 @@ export class PowerupManager {
 		if (this.lastUpdateTime === 0) {
 			this.lastUpdateTime = currentTime
 		}
+
+		const dt = currentTime - this.lastUpdateTime
 		this.lastUpdateTime = currentTime
 
 		// 1. Remove expired powerups
@@ -65,13 +67,11 @@ export class PowerupManager {
 			return age < p.lifetime
 		})
 
-		// Note: Spawning is now handled in trySpawn() called by GameEngine on moves
-		// to ensure determinism.
+		// 2. Try to spawn new powerup based on time
+		this.checkSpawn(currentTime, dt, grid)
 	}
 
-	// Called by GameEngine on move/placement
-	trySpawn(dtMs: number, grid: Grid) {
-		const currentTime = this.lastUpdateTime
+	private checkSpawn(currentTime: number, dt: number, grid: Grid) {
 		// Calculate time since last spawn
 		// If lastSpawnTime is 0, we treat it as "long ago" so full probability applies
 		const timeSinceLast = this.lastSpawnTime === 0 ? this.COOLDOWN_DURATION : currentTime - this.lastSpawnTime
@@ -86,10 +86,10 @@ export class PowerupManager {
 		// Use a curve that stays low then grows (convex). Squared or Cubed.
 		const probabilityFactor = progress * progress * progress
 
-		// Calculate probability for this MOVE
+		// Calculate probability for this frame
 		// Rate is "events per second". Prob ~ Rate * (dt / 1000)
 		const currentRatePerSecond = this.BASE_SPAWN_RATE * probabilityFactor
-		const spawnChance = currentRatePerSecond * (dtMs / 1000)
+		const spawnChance = currentRatePerSecond * (dt / 1000)
 
 		if (this.rng.next() < spawnChance) {
 			this.spawnPowerup(currentTime, grid)
@@ -102,9 +102,10 @@ export class PowerupManager {
 	}
 
 	// Called after a successful block placement.
-	// DEPRECATED regarding spawning logic? No, we are using this now (via trySpawn calls in engine)
+	// DEPRECATED regarding spawning logic, but kept for interface compatibility if needed.
+	// We no longer spawn here directly.
 	onPlacement(currentTime: number, grid: Grid): void {
-		// No-op for legacy calls, engine should call trySpawn with dt
+		// No-op for spawning.
 	}
 
 	private spawnPowerup(currentTime: number, grid: Grid): void {
@@ -123,7 +124,7 @@ export class PowerupManager {
 		if (emptyCells.length === 0) return
 
 		// Pick a random empty cell
-		const randomIndex = this.rng.nextInt(emptyCells.length)
+		const randomIndex = Math.floor(this.rng.next() * emptyCells.length)
 		const position = emptyCells[randomIndex]
 
 		const chosen = this.pickSpec()

@@ -67,16 +67,10 @@ export class GameEngine {
 	lastUpdateTime: number = Date.now()
 	lastMoveTime: number = Date.now()
 
-	constructor(seed: number | string = Date.now()) {
+	constructor(seed: number = Date.now()) {
 		this.grid = new Array(GRID_SIZE * GRID_SIZE).fill(0)
 		this.score = 0
-		if (typeof seed === "number") {
-			this.seed = seed
-		} else {
-			// If string, we still store it, but RNG handles the hashing
-			// We track it as 'number | string'
-			this.seed = seed as any
-		}
+		this.seed = seed // Store seed
 		this.rng = new RNG(seed)
 		this.replayManager = new ReplayManager(seed)
 		this.powerupManager = new PowerupManager(this.rng)
@@ -146,7 +140,7 @@ export class GameEngine {
 			this.currentShapes = selectedShapes
 			// Mark a new hand being dealt for timers/UX
 			this.handGeneration++
-			this.handDealtAt = Date.now() // Note: this is wall clock time for UI, not gameplay logic
+			this.handDealtAt = Date.now()
 		}
 	}
 
@@ -164,7 +158,7 @@ export class GameEngine {
 		return true
 	}
 
-	place(shapeIndex: number, boardRow: number, boardCol: number, options?: { isTutorial?: boolean; now?: number }): MoveResult {
+	place(shapeIndex: number, boardRow: number, boardCol: number, options?: { isTutorial?: boolean }): MoveResult {
 		const shape = this.currentShapes[shapeIndex]
 		if (!shape) throw new Error("Shape index empty")
 
@@ -267,7 +261,7 @@ export class GameEngine {
 		}
 
 		// Fast Move Multiplier
-		const now = options?.now ?? Date.now()
+		const now = Date.now()
 		const timeSinceLastMove = now - this.lastMoveTime
 		let moveMultiplier = 1
 		if (timeSinceLastMove < 1500 && this.moves > 0) {
@@ -308,8 +302,8 @@ export class GameEngine {
 			this.grid[idx] = 0
 		})
 
-		// Chance to spawn a powerup
-		this.powerupManager.trySpawn(timeSinceLastMove, this.grid)
+		// Chance to spawn a powerup after a successful placement (post-clear so it lands on empty cells)
+		this.powerupManager.onPlacement(Date.now(), this.grid)
 
 		// 6. Refill if empty
 		if (this.currentShapes.every((s) => s === null)) {
@@ -321,18 +315,10 @@ export class GameEngine {
 		this.isGameOver = gameOver // Update state
 
 		this.moves++ // Increment moves
-		this.lastMoveTime = now
+		this.lastMoveTime = Date.now()
 
 		// Record move for replay
-		this.replayManager.recordAction({
-			tick: this.moves,
-			type: "place",
-			payload: {
-				shapeIndex,
-				r: boardRow,
-				c: boardCol,
-			},
-		})
+		this.replayManager.recordMove(shape, boardRow, boardCol, this.score, rowsToClear, colsToClear, boxesToClear)
 
 		// Combine cleared cells from lines/boxes and powerup
 		const allClearedCells = Array.from(cellsToClear).map((idx) => ({
@@ -382,14 +368,9 @@ export class GameEngine {
 		this.currentShapes = [...newShapes]
 	}
 
-	reset(seed: number | string = Date.now()) {
-		this.seed = typeof seed === "string" ? (RNG["hashString"] ? (RNG as any).hashString(seed) : 0) : seed // Hack if static method not visible? TS should be fine.
-		// Actually best to just pass to RNG
+	reset(seed: number = Date.now()) {
+		this.seed = seed
 		this.rng = new RNG(seed)
-		// Re-store seed properly (if string passed to RNG, getting state back might be just int)
-		// We'll trust the RNG.state for serialization, but keep the initial seed for replay
-		this.seed = seed as any
-
 		this.replayManager = new ReplayManager(seed)
 		this.powerupManager = new PowerupManager(this.rng)
 		this.grid = new Array(GRID_SIZE * GRID_SIZE).fill(0)
@@ -419,112 +400,5 @@ export class GameEngine {
 	// Testing helper: force spawn a specific powerup type
 	spawnPowerupOfType(type: Powerup["type"], currentTime: number = Date.now()) {
 		this.powerupManager.spawnOfType(type, currentTime, this.grid)
-	}
-}
-
-// Replay Runner Function
-export type RunReplayOptions = {
-	maxActions?: number
-	maxDurationMs?: number
-}
-
-export type RunReplayResult = {
-	finalScore: number
-	isValid: boolean
-	reason?: string
-	actionCount: number
-	durationMs: number
-}
-
-export function runReplay(replayConfig: { seed: string | number; actions: import("./types.js").ReplayAction[]; options?: RunReplayOptions }): RunReplayResult {
-	const maxActions = replayConfig.options?.maxActions ?? 8000
-	const maxDurationMs = replayConfig.options?.maxDurationMs ?? 30 * 60 * 1000
-
-	if (!Array.isArray(replayConfig.actions)) {
-		return { finalScore: 0, isValid: false, reason: "ACTIONS_NOT_ARRAY", actionCount: 0, durationMs: 0 }
-	}
-	if (replayConfig.actions.length > maxActions) {
-		return { finalScore: 0, isValid: false, reason: "TOO_MANY_ACTIONS", actionCount: replayConfig.actions.length, durationMs: 0 }
-	}
-
-	// Initialize engine.
-	// We enforce a deterministic time base: action.timestamp is treated as "now".
-	const engine = new GameEngine(replayConfig.seed)
-	engine.lastMoveTime = 0
-	engine.handDealtAt = 0
-	engine.lastUpdateTime = 0
-	engine.update(0)
-
-	let isValid = true
-	let reason: string | undefined
-	let lastTimestamp = -1
-
-	for (let i = 0; i < replayConfig.actions.length; i++) {
-		const action = replayConfig.actions[i]
-
-		if (!action || typeof action !== "object") {
-			isValid = false
-			reason = "BAD_ACTION"
-			break
-		}
-		if (action.type !== "place") {
-			isValid = false
-			reason = "UNSUPPORTED_ACTION"
-			break
-		}
-		if (typeof action.timestamp !== "number" || !Number.isFinite(action.timestamp) || action.timestamp < 0) {
-			isValid = false
-			reason = "BAD_TIMESTAMP"
-			break
-		}
-		if (action.timestamp > maxDurationMs) {
-			isValid = false
-			reason = "REPLAY_TOO_LONG"
-			break
-		}
-		if (action.timestamp < lastTimestamp) {
-			isValid = false
-			reason = "NON_MONOTONIC_TIME"
-			break
-		}
-		lastTimestamp = action.timestamp
-
-		// Basic tick sanity (client records moves starting at 1)
-		if (typeof action.tick === "number" && action.tick !== i + 1) {
-			isValid = false
-			reason = "BAD_TICK"
-			break
-		}
-
-		const p = action.payload
-		if (!p || typeof p.shapeIndex !== "number" || typeof p.r !== "number" || typeof p.c !== "number") {
-			isValid = false
-			reason = "BAD_PAYLOAD"
-			break
-		}
-		if (p.shapeIndex < 0 || p.shapeIndex > 2) {
-			isValid = false
-			reason = "BAD_SHAPE_INDEX"
-			break
-		}
-
-		const now = action.timestamp
-		engine.update(now)
-		const res = engine.place(p.shapeIndex, p.r, p.c, { now })
-		if (!res.valid) {
-			isValid = false
-			reason = "INVALID_MOVE"
-			break
-		}
-	}
-
-	// We consider the replay valid if all actions were valid and basic sanity checks passed.
-	// We no longer require the engine to reach a "game over" state; short or partial games are allowed.
-	return {
-		finalScore: engine.score,
-		isValid,
-		reason: isValid ? undefined : reason ?? "REPLAY_INVALID",
-		actionCount: replayConfig.actions.length,
-		durationMs: Math.max(0, lastTimestamp),
 	}
 }
