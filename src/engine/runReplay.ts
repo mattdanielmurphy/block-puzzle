@@ -35,7 +35,7 @@ export function runReplay(args: {
 			return { isValid: false, finalScore: engine.score, finalGrid: engine.grid, gameOver: engine.isGameOver, reason: "Shape not in hand" }
 		}
 
-		const result = engine.place(shapeIndex, action.boardRow, action.boardCol)
+		const result = engine.place(shapeIndex, action.boardRow, action.boardCol, undefined, action.timestamp)
 		if (!result.valid) {
 			return { isValid: false, finalScore: engine.score, finalGrid: engine.grid, gameOver: engine.isGameOver, reason: "Invalid placement" }
 		}
