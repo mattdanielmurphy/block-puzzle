@@ -8,7 +8,6 @@ const ASSETS_TO_COPY = [
 	{ src: "index.html", dest: "index.html", transform: true },
 	{ src: "public/styles.css", dest: "styles.css" },
 	{ src: "manifest.json", dest: "manifest.json" },
-	{ src: "service-worker.js", dest: "service-worker.js", transform: true },
 	{ src: "public/assets", dest: "assets", isDir: true },
 ]
 
