@@ -9,7 +9,7 @@ const ASSETS = [
 	"./dist/src/engine/replay.js",
 	"./dist/src/engine/rng.js",
 	"./dist/src/engine/shapes.js",
-	"./dist/src/engine/types.js",
+	"./dist/src/engine/types",
 	"./dist/src/ui/effects.js",
 	"./dist/src/ui/input.js",
 	"./dist/src/ui/renderer.js",

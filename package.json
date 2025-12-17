@@ -8,11 +8,18 @@
   "scripts": {
     "build": "node build.js",
     "watch": "npx -y nodemon --watch src --watch index.html --watch styles.css --ext ts,html,css --exec \"npm run build\"",
-    "start": "npm run build && npx http-server dist -c-1 -p 8000"
+    "start": "npm run build && npx http-server dist -c-1 -p 8000",
+    "dev:web": "vite",
+    "dev:api": "vercel dev --listen 3000",
+    "dev:all": "concurrently -k -n web,api -c cyan,magenta \"npm:dev:web\" \"npm:dev:api\""
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.88.0",
     "@vercel/node": "^5.5.15",
     "typescript": "^5.9.3"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "vite": "^6.4.1"
   }
 }

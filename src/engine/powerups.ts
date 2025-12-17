@@ -1,4 +1,4 @@
-import { GRID_SIZE, Grid, Point, SavedPowerupState } from "./types.js"
+import { GRID_SIZE, Grid, Point, SavedPowerupState } from "./types"
 
 import { RNG } from "./rng.js"
 

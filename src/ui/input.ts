@@ -1,5 +1,6 @@
+import { GameState, Shape } from "../engine/types"
+
 import { GameRenderer } from "./renderer.js"
-import { GameState, Shape } from "../engine/types.js"
 import { THEME } from "./theme.js"
 
 export interface DragState {

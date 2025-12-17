@@ -5,8 +5,8 @@
 		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
 		<title>Blockdoku</title>
 		<meta name="description" content="Block Sudoku Puzzle Game" />
-		<link rel="stylesheet" href="styles.css" />
-		<link rel="manifest" href="manifest.json" />
+		<link rel="stylesheet" href="/styles.css" />
+		<link rel="manifest" href="/manifest.json" />
 		<meta name="theme-color" content="#1a1a1a" />
 		<meta name="apple-mobile-web-app-capable" content="yes" />
 		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -62,19 +62,17 @@
 					<h1>Game Over</h1>
 					<p id="game-over-highscore-label" class="hidden">New High Score!</p>
 					<p>Final Score: <span id="final-score">0</span></p>
-					<div class="name-input-group">
-						<label for="player-name-input">Your Name:</label>
-						<input type="text" id="player-name-input" maxlength="20" placeholder="Player" />
-					</div>
 					<p id="game-over-quote"></p>
+					<div class="name-input-group">
+						<input type="text" id="player-name-input" maxlength="20" placeholder="Player" />
+						<button id="submit-score-btn" class="secondary-btn">Submit Score</button>
+					</div>
 					<div id="submission-status-message" class="hidden"></div>
 					<div id="leaderboard-ranking" class="hidden"></div>
 					<div class="game-over-actions">
-						<button id="submit-score-btn" class="primary-btn">Submit Score</button>
-						<button id="leaderboard-gameover-btn" class="secondary-btn">View Leaderboard</button>
 						<div id="post-submission-actions">
-							<button id="restart-btn">Try Again</button>
-							<button id="replay-btn">▶ Replay Game</button>
+							<button id="restart-btn" class="primary-btn">Try Again</button>
+							<button id="replay-btn" class="secondary-btn">▶ Watch Replay</button>
 						</div>
 					</div>
 				</div>
@@ -118,7 +116,7 @@
 				<span id="app-version"></span>
 			</footer>
 		</div>
-		<script type="module" src="dist/src/main.js"></script>
+		<script type="module" src="/src/main.ts"></script>
 		<script>
 			// Player Name Persistence
 			const nameInput = document.getElementById("player-name-input")
@@ -129,7 +127,7 @@
 
 				// Save name when input loses focus (blur). The 'input' event was too aggressive.
 				nameInput.addEventListener("blur", (e) => {
-					const value = (e.target).value.trim()
+					const value = e.target.value.trim()
 					if (value) {
 						localStorage.setItem("bp_player_name", value)
 					} else {
@@ -159,7 +157,7 @@
 						// Register the Service Worker for production
 						// We add a timestamp to the URL to ensure the SW file itself is never cached
 						navigator.serviceWorker
-							.register("service-worker.js?v=" + Date.now())
+							.register("/service-worker.js?v=" + Date.now())
 							.then((registration) => {
 								console.log("ServiceWorker registered: ", registration)
 							})

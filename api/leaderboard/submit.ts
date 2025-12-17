@@ -1,15 +1,14 @@
-import type { VercelRequest, VercelResponse } from "@vercel/node"
-
-import { supabase } from "../_lib/supabase"
 import * as http from "../_lib/http"
 import * as ip from "../_lib/ip"
 import * as rateLimit from "../_lib/rateLimit"
 import * as validation from "../_lib/validation"
+
+import type { VercelRequest, VercelResponse } from "@vercel/node"
+
 import { runReplay } from "../../src/engine/runReplay"
+import { supabase } from "../_lib/supabase"
 
 // The following Postgres functions are required for this endpoint:
-//
-
 //
 // CREATE OR REPLACE FUNCTION trim_verified_scores()
 // RETURNS void AS $$
@@ -30,7 +29,11 @@ type SubmitBody = {
 	replay?: unknown
 }
 
-type SubmitResponse = { ok: true; status: "VERIFIED_ACCEPTED"; entry: { name: string; score: number; createdAt: string } }
+type SubmitResponse = {
+	ok: true
+	status: "VERIFIED_ACCEPTED"
+	entry: { name: string; score: number; createdAt: string }
+}
 
 async function parseJsonBody(req: VercelRequest): Promise<SubmitBody | null> {
 	const b: any = (req as any).body
@@ -45,36 +48,12 @@ async function parseJsonBody(req: VercelRequest): Promise<SubmitBody | null> {
 	return b
 }
 
-async function getVerifiedThreshold10th(): Promise<{ threshold: number; count: number }> {
-	try {
-		if (!supabase) return { threshold: Number.NEGATIVE_INFINITY, count: 0 }
-
-		const { data, error, count } = await supabase
-			.from("scores")
-			.select("score", { count: "exact" })
-			.order("score", { ascending: false })
-			.range(9, 9)
-
-		if (error) {
-			console.error("Error fetching verified score threshold:", error)
-			return { threshold: Number.NEGATIVE_INFINITY, count: 0 }
-		}
-
-		if (data && data.length > 0) {
-			return { threshold: data[0].score, count: count || 0 }
-		}
-
-		return { threshold: Number.NEGATIVE_INFINITY, count: count || 0 }
-	} catch (e) {
-		console.error("Error fetching verified score threshold:", e)
-		return { threshold: Number.NEGATIVE_INFINITY, count: 0 }
-	}
-}
-
 export async function handler(req: VercelRequest, res: VercelResponse) {
 	try {
 		console.log(`Submit: Received ${req.method} request.`)
+
 		if (req.method !== "POST") return http.errorJson(res, 405, "METHOD_NOT_ALLOWED", "Use POST")
+
 		if (!supabase) {
 			console.log("Submit: Supabase instance not available.")
 			return http.errorJson(res, 503, "SERVICE_UNAVAILABLE", "Leaderboard is not available")
@@ -84,26 +63,25 @@ export async function handler(req: VercelRequest, res: VercelResponse) {
 		const clientIp = ip.getClientIp(req)
 		console.log(`Submit: Client IP: ${clientIp}`)
 
-		// B) Rate limit: submit bucket (10 per 60 seconds per IP)
-		// This still uses Redis.
-		{
-			const rl = await rateLimit.rateLimitFixedWindow({
-				bucket: "submit",
-				ip: clientIp,
-				limit: validation.LIMITS.submitPerMinute,
-				windowSec: 60,
-			})
-			if (rl.ok === false) {
-				console.log(`Submit: Rate limited for IP ${clientIp} on 'submit' bucket. Retry after ${rl.retryAfterSec}s.`)
-				res.setHeader("Retry-After", String(rl.retryAfterSec))
-				return http.errorJson(res, 429, "RATE_LIMITED", "Too many submissions")
-			}
-			console.log(`Submit: Rate limit check passed for IP ${clientIp} on 'submit' bucket.`)
+		// B) Rate limit: submit bucket (N per 60 seconds per IP)
+		const submitRl = await rateLimit.rateLimitFixedWindow({
+			bucket: "submit",
+			ip: clientIp,
+			limit: validation.LIMITS.submitPerMinute,
+			windowSec: 60,
+		})
+		if (submitRl.ok === false) {
+			console.log(`Submit: Rate limited for IP ${clientIp} on 'submit' bucket. Retry after ${submitRl.retryAfterSec}s.`)
+			res.setHeader("Retry-After", String(submitRl.retryAfterSec))
+			return http.errorJson(res, 429, "RATE_LIMITED", "Too many submissions")
 		}
+
+		console.log(`Submit: Rate limit check passed for IP ${clientIp} on 'submit' bucket.`)
 
 		// C) Validate inputs
 		const body = await parseJsonBody(req)
 		console.log("Submit: Parsed request body:", body)
+
 		if (!body) return http.errorJson(res, 400, "BAD_JSON", "Invalid JSON body")
 
 		if (typeof body.runId !== "string" || !body.runId.trim()) {
@@ -115,44 +93,38 @@ export async function handler(req: VercelRequest, res: VercelResponse) {
 		if (nameV.ok === false) {
 			return http.errorJson(res, 400, "VALIDATION_ERROR", nameV.message)
 		}
+
 		const scoreV = validation.validateScore(body.score)
 		if (scoreV.ok === false) {
 			return http.errorJson(res, 400, "VALIDATION_ERROR", scoreV.message)
 		}
+
+		// IMPORTANT: require replay for ALL submissions
 		const replayV = validation.validateReplay(body.replay)
 		if (replayV.ok === false) {
 			return http.errorJson(res, 400, "VALIDATION_ERROR", replayV.message)
 		}
 
 		// D) One-submit-per-runId: Check if runId already exists
-		const { data: existingRun, error: existingRunError } = await supabase
-			.from("scores")
-			.select("run_id")
-			.eq("run_id", runId)
-			.limit(1)
+		const { data: existingRun, error: existingRunError } = await supabase.from("scores").select("run_id").eq("run_id", runId).limit(1)
 
 		if (existingRunError) {
 			console.error("Submit: Error checking for existing runId:", existingRunError)
 			return http.errorJson(res, 500, "INTERNAL_SERVER_ERROR", "Could not check for existing run.")
 		}
+
 		if (existingRun && existingRun.length > 0) {
 			return http.errorJson(res, 409, "ALREADY_SUBMITTED", "This runId has already been submitted")
 		}
 
-		// E) Read VERIFIED threshold (10th place)
-		const { threshold, count } = await getVerifiedThreshold10th()
-		console.log(`Submit: Verified threshold: ${threshold}, count: ${count}. Submitted score: ${scoreV.value}`)
-
-		// G) If score > threshold: verify replay
-		{
-			const rl = await rateLimit.rateLimitMultiple([
-				{ bucket: "verify", ip: clientIp, limit: validation.LIMITS.verifyPerMinute, windowSec: 60 },
-				{ bucket: "verify", ip: clientIp, limit: validation.LIMITS.verifyPerHour, windowSec: 3600 },
-			])
-			if (rl.ok === false) {
-				res.setHeader("Retry-After", String(rl.retryAfterSec))
-				return http.errorJson(res, 429, "RATE_LIMITED", "Too many verification attempts")
-			}
+		// E) ALWAYS verify replay (rate limit verification attempts)
+		const verifyRl = await rateLimit.rateLimitMultiple([
+			{ bucket: "verify", ip: clientIp, limit: validation.LIMITS.verifyPerMinute, windowSec: 60 },
+			{ bucket: "verify", ip: clientIp, limit: validation.LIMITS.verifyPerHour, windowSec: 3600 },
+		])
+		if (verifyRl.ok === false) {
+			res.setHeader("Retry-After", String(verifyRl.retryAfterSec))
+			return http.errorJson(res, 429, "RATE_LIMITED", "Too many verification attempts")
 		}
 
 		const replayResult = runReplay({
@@ -167,18 +139,15 @@ export async function handler(req: VercelRequest, res: VercelResponse) {
 		if (!replayResult.isValid) {
 			return http.errorJson(res, 400, "REPLAY_INVALID", "Replay verification failed", { reason: replayResult.reason })
 		}
+
 		if (replayResult.finalScore !== scoreV.value) {
 			return http.errorJson(res, 400, "SCORE_MISMATCH", "Submitted score does not match replay", {
 				computedScore: replayResult.finalScore,
 			})
 		}
 
-		// Insert into verified scores
-		const { data: entry, error: insertError } = await supabase
-			.from("scores")
-			.insert({ run_id: runId, name: nameV.value, score: scoreV.value })
-			.select()
-			.single()
+		// F) Insert verified score
+		const { data: entry, error: insertError } = await supabase.from("scores").insert({ run_id: runId, name: nameV.value, score: scoreV.value }).select().single()
 
 		if (insertError) {
 			if (insertError.code === "23505") {
@@ -189,7 +158,7 @@ export async function handler(req: VercelRequest, res: VercelResponse) {
 			return http.errorJson(res, 500, "INTERNAL_SERVER_ERROR", "Could not save score.")
 		}
 
-		// Trim verified scores to 100
+		// G) Trim verified scores to 100
 		const { error: deleteError } = await supabase.rpc("trim_verified_scores")
 		if (deleteError) console.error("Submit: Error trimming verified scores:", deleteError)
 

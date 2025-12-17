@@ -1,12 +1,12 @@
 import { BlockClearEffect, FloatingTextEffect } from "./ui/effects.js"
-import { GRID_SIZE, SavedAppState, Shape } from "./engine/types.js"
+import { GRID_SIZE, SavedAppState, Shape } from "./engine/types"
+import { ReplayManager, ReplayState } from "./engine/replay.js"
 
 import { GameEngine } from "./engine/logic.js"
 import { GameRenderer } from "./ui/renderer.js"
 import { InputManager } from "./ui/input.js"
 import { PowerupType } from "./engine/powerups.js"
 import { ReplayPlayer } from "./ui/replay-player.js"
-import { ReplayManager, ReplayState } from "./engine/replay.js"
 import { THEME } from "./ui/theme.js"
 import { TutorialManager } from "./ui/tutorial.js"
 import { VERSION } from "./version.js"
@@ -140,7 +140,8 @@ class GameApp {
 	// Pause & timers
 	private isPaused: boolean = false
 	private pauseStartedAt: number | null = null
-	private readonly HAND_TIME_LIMIT_MS = 10000
+	private readonly HAND_TIME_LIMIT_MS = 5000
+	//! CHANGE BACK TO 10000
 	private handDeadline: number | null = null
 	private lastHandGeneration: number = -1
 
@@ -265,18 +266,18 @@ class GameApp {
 		if (!localStorage.getItem("bp_tutorial_completed")) {
 			this.tutorialManager.start()
 		} else {
-			const loadedReplay = ReplayManager.loadReplayFromLocalStorage();
+			const loadedReplay = ReplayManager.loadReplayFromLocalStorage()
 			if (loadedReplay) {
 				// If a replay state was loaded, initialize the engine with it
-				this.engine.loadReplay(loadedReplay);
+				this.engine.loadReplay(loadedReplay)
 				// Then start replay mode
-				this.startReplay();
+				this.startReplay()
 				// Ensure game state doesn't try to overwrite the replay, and timer/etc is handled
-				this.runInitialized = true;
+				this.runInitialized = true
 				// The game is already over if a replay is loaded (it's a game-over replay)
-				this.engine.isGameOver = true;
-				this.updateUI(); // To show game-over overlay
-				this.syncHandCountdown(Date.now()); // Will be null in replay mode
+				this.engine.isGameOver = true
+				this.updateUI() // To show game-over overlay
+				this.syncHandCountdown(Date.now()) // Will be null in replay mode
 			} else if (!this.loadGameState()) {
 				// No saved state and tutorial already completed: start a fresh run
 				this.startNewRun()
@@ -976,9 +977,7 @@ class GameApp {
 					rawBodySnippet: rawBody ? rawBody.slice(0, 200) : null,
 				})
 				const errorMessage =
-					data && typeof data === "object" && (data as any).error
-						? `Failed to submit score: ${(data as any).error}`
-						: "Failed to submit score. You can start a new run and try again."
+					data && typeof data === "object" && (data as any).error ? `Failed to submit score: ${(data as any).error}` : "Failed to submit score. You can start a new run and try again."
 				this.updateSubmissionUI("error", errorMessage)
 			}
 		} catch (e) {
@@ -1532,7 +1531,7 @@ class GameApp {
 		this.expectedReplayScore = replayState.finalScore
 
 		// Create replay player
-		this.replayPlayer = new ReplayPlayer(replayState, this.renderer);
+		this.replayPlayer = new ReplayPlayer(replayState, this.renderer)
 		this.isInReplayMode = true
 
 		// Hide game over overlay and HEADER, show replay overlay
@@ -1583,8 +1582,7 @@ class GameApp {
 		if (scoreEl) scoreEl.textContent = score.toString()
 
 		if (expectedEl) {
-			expectedEl.textContent =
-				this.expectedReplayScore === null ? "-" : this.expectedReplayScore.toString()
+			expectedEl.textContent = this.expectedReplayScore === null ? "-" : this.expectedReplayScore.toString()
 		}
 
 		const atEnd = totalMoves > 0 && moveIndex === totalMoves - 1
@@ -1632,8 +1630,8 @@ class GameApp {
 		this.runInitialized = true
 		this.updateCountdownUI(null)
 		this.syncHandCountdown(Date.now())
+		this.updateUI() // Explicitly update UI after starting new run
 	}
-
 }
 
 // Boot

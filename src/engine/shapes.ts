@@ -1,4 +1,4 @@
-import { Shape } from "./types.js"
+import { Shape } from "./types"
 
 // Helper: Normalize coordinates to be zero-indexed at top-left
 function normalize(coords: { r: number; c: number }[]): { r: number; c: number }[] {

@@ -6,10 +6,10 @@ const { execSync } = require("child_process")
 const DIST_DIR = path.join(__dirname, "dist")
 const ASSETS_TO_COPY = [
 	{ src: "index.html", dest: "index.html", transform: true },
-	{ src: "styles.css", dest: "styles.css" },
+	{ src: "public/styles.css", dest: "styles.css" },
 	{ src: "manifest.json", dest: "manifest.json" },
 	{ src: "service-worker.js", dest: "service-worker.js", transform: true },
-	{ src: "assets", dest: "assets", isDir: true },
+	{ src: "public/assets", dest: "assets", isDir: true },
 ]
 
 console.log("Build started...")

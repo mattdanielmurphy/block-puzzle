@@ -1,4 +1,4 @@
-import { GRID_SIZE } from "../engine/types.js"
+import { GRID_SIZE } from "../engine/types"
 import { Layout } from "./renderer.js"
 import { THEME } from "./theme.js"
 

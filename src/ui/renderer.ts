@@ -1,4 +1,4 @@
-import { GRID_SIZE, GameState, Grid, Point, Shape } from "../engine/types.js"
+import { GRID_SIZE, GameState, Grid, Point, Shape } from "../engine/types"
 
 import { Effect } from "./effects.js"
 import { THEME } from "./theme.js"
@@ -40,25 +40,22 @@ export class GameRenderer {
 		this.animations.forEach((anim) => anim.draw(this.ctx, this.layout))
 	}
 
-	resize() {
-		// CSS handles the visual size (100% width/height of container)
-		// We just need to match the internal resolution to the visual size
+	resize = () => {
 		const dpr = window.devicePixelRatio || 1
 		const rect = this.canvas.getBoundingClientRect()
-
-		// If the element is hidden or collapsed, don't resizing to 0
 		if (rect.width === 0 || rect.height === 0) return
 
 		this.width = rect.width
 		this.height = rect.height
 
-		this.canvas.width = this.width * dpr
-		this.canvas.height = this.height * dpr
+		this.canvas.width = Math.round(this.width * dpr)
+		this.canvas.height = Math.round(this.height * dpr)
 
+		// Reset transform so scale doesn't stack
+		this.ctx.setTransform(1, 0, 0, 1, 0, 0)
 		this.ctx.scale(dpr, dpr)
 
 		this.recalcLayout()
-		// Request redraw handled by game loop
 	}
 
 	recalcLayout() {
