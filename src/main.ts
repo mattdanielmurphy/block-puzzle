@@ -1,12 +1,10 @@
 import { BlockClearEffect, FloatingTextEffect } from "./ui/effects.js"
 import { GRID_SIZE, SavedAppState, Shape } from "./engine/types"
-import { ReplayManager, ReplayState } from "./engine/replay.js"
 
 import { GameEngine } from "./engine/logic.js"
 import { GameRenderer } from "./ui/renderer.js"
 import { InputManager } from "./ui/input.js"
 import { PowerupType } from "./engine/powerups.js"
-import { ReplayPlayer } from "./ui/replay-player.js"
 import { THEME } from "./ui/theme.js"
 import { TutorialManager } from "./ui/tutorial.js"
 import { VERSION } from "./version.js"
@@ -128,20 +126,15 @@ class GameApp {
 	private wasInPanicState: boolean = false
 	private timerPanic: boolean = false
 	private handTimerRatio: number | null = null
+	private firstBlockPlaced: boolean = false
 
-	// Replay State
-	private replayPlayer: ReplayPlayer | null = null
-	private isInReplayMode: boolean = false
-	private currentReplayState: ReplayState | null = null
-	private expectedReplayScore: number | null = null
 	// Tutorial State
 	tutorialManager: TutorialManager
 
 	// Pause & timers
 	private isPaused: boolean = false
 	private pauseStartedAt: number | null = null
-	private readonly HAND_TIME_LIMIT_MS = 5000
-	//! CHANGE BACK TO 10000
+	private readonly HAND_TIME_LIMIT_MS = 8000
 	private handDeadline: number | null = null
 	private lastHandGeneration: number = -1
 
@@ -160,6 +153,13 @@ class GameApp {
 	private scoreSubmitted: boolean = false // Flag to prevent duplicate submissions
 	private runInitialized: boolean = false // Prevent timer/start logic before the real run begins
 
+	// Player Name UI elements
+	private playerNameInput: HTMLInputElement | null = null
+	private submitScoreBtn: HTMLButtonElement | null = null
+	private playerNameSubmissionContainer: HTMLDivElement | null = null
+	private playerNameDisplay: HTMLDivElement | null = null
+	private displayPlayerNameSpan: HTMLSpanElement | null = null
+
 	// Leaderboard State
 	private lastSubmittedEntry: { name: string; score: number } | null = null
 
@@ -176,6 +176,13 @@ class GameApp {
 		this.canvas = document.getElementById("game-canvas") as HTMLCanvasElement
 		const urlParams = new URLSearchParams(window.location.search)
 		const seedParam = urlParams.get("seed")
+
+		// Get references to player name UI elements
+		this.playerNameInput = document.getElementById("player-name-input") as HTMLInputElement
+		this.submitScoreBtn = document.getElementById("submit-score-btn") as HTMLButtonElement
+		this.playerNameSubmissionContainer = document.getElementById("player-name-submission-container") as HTMLDivElement
+		this.playerNameDisplay = document.getElementById("player-name-display") as HTMLDivElement
+		this.displayPlayerNameSpan = document.getElementById("display-player-name") as HTMLSpanElement
 
 		// Generate runId and seed using crypto.getRandomValues()
 		this.runId = this.generateRunId()
@@ -197,6 +204,11 @@ class GameApp {
 
 		if (this.DEBUG_ENABLE_POWERUP_KEYS) {
 			document.addEventListener("keydown", (e) => {
+				// make sure not in a text input field
+				const activeElement = document.activeElement
+				if (activeElement && activeElement.tagName.toLowerCase() === "input") {
+					return
+				}
 				const now = Date.now()
 				switch (e.key.toLowerCase()) {
 					case "1":
@@ -226,6 +238,7 @@ class GameApp {
 
 		this.loadHighScore()
 		this.updateUI()
+		this.updatePlayerNameUI() // Call here to set initial state of player name input/display
 		this.bindControls()
 		this.initSettings()
 
@@ -265,27 +278,18 @@ class GameApp {
 		// Start Tutorial if not completed
 		if (!localStorage.getItem("bp_tutorial_completed")) {
 			this.tutorialManager.start()
+		} else if (!this.loadGameState()) {
+			// No saved state and tutorial already completed: start a fresh run
+			this.startNewRun()
 		} else {
-			const loadedReplay = ReplayManager.loadReplayFromLocalStorage()
-			if (loadedReplay) {
-				// If a replay state was loaded, initialize the engine with it
-				this.engine.loadReplay(loadedReplay)
-				// Then start replay mode
-				this.startReplay()
-				// Ensure game state doesn't try to overwrite the replay, and timer/etc is handled
-				this.runInitialized = true
-				// The game is already over if a replay is loaded (it's a game-over replay)
-				this.engine.isGameOver = true
-				this.updateUI() // To show game-over overlay
-				this.syncHandCountdown(Date.now()) // Will be null in replay mode
-			} else if (!this.loadGameState()) {
-				// No saved state and tutorial already completed: start a fresh run
-				this.startNewRun()
-			} else {
-				// If a game state was loaded, sync the countdown (it was stopped on save/pause)
-				this.runInitialized = true
-				this.syncHandCountdown(Date.now())
+			// If a game state was loaded, sync the countdown (it was stopped on save/pause)
+			this.runInitialized = true
+			this.firstBlockPlaced = true
+			// Check submission status for the loaded game state's runId
+			if (this.runId && localStorage.getItem(`bp_submitted_run_${this.runId}`)) {
+				this.scoreSubmitted = true
 			}
+			this.syncHandCountdown(Date.now())
 		}
 	}
 
@@ -410,8 +414,18 @@ class GameApp {
 		document.getElementById("pause-btn")?.addEventListener("click", () => {
 			this.togglePause()
 		})
+
 		document.getElementById("submit-score-btn")?.addEventListener("click", () => {
 			this.attemptScoreSubmission()
+		})
+		// New event listener for player name input
+		this.playerNameInput?.addEventListener("input", () => {
+			if (this.submitScoreBtn && this.playerNameInput) {
+				const playerName = this.playerNameInput.value.trim()
+				this.submitScoreBtn.disabled = playerName === ""
+				// Save player name to localStorage immediately
+				localStorage.setItem("bp_player_name", playerName)
+			}
 		})
 
 		document.getElementById("leaderboard-header-btn")?.addEventListener("click", () => {
@@ -422,29 +436,6 @@ class GameApp {
 			this.openLeaderboard()
 		})
 
-		document.getElementById("replay-btn")?.addEventListener("click", () => {
-			this.startReplay()
-		})
-
-		// Replay controls - just exit
-		document.getElementById("replay-exit")?.addEventListener("click", () => {
-			this.exitReplay()
-		})
-
-		// Replay: copy JSON (debug)
-		document.getElementById("replay-copy-json")?.addEventListener("click", async () => {
-			if (!this.currentReplayState) return
-			const json = JSON.stringify(this.currentReplayState)
-			console.log("Replay Data", json)
-
-			try {
-				await navigator.clipboard.writeText(json)
-			} catch (e) {
-				// Fallback for clipboard permission / unsupported environments
-				window.prompt("Copy replay JSON:", json)
-			}
-		})
-
 		document.getElementById("pause-overlay")?.addEventListener("click", () => {
 			this.resumeGame()
 		})
@@ -453,12 +444,12 @@ class GameApp {
 			this.closeLeaderboard()
 		})
 		document.addEventListener("keydown", (e) => {
+			// make sure not in a text input field
+			const activeElement = document.activeElement
+			if (activeElement && activeElement.tagName.toLowerCase() === "input") {
+				return
+			}
 			if (e.key === "r" && !e.metaKey && !e.ctrlKey && !e.altKey) {
-				// make sure not in a text input field
-				const activeElement = document.activeElement
-				if (activeElement && activeElement.tagName.toLowerCase() === "input") {
-					return
-				}
 				this.restart()
 				e.preventDefault()
 				return
@@ -476,6 +467,7 @@ class GameApp {
 
 		// pause on focus lost
 		window.addEventListener("blur", () => {
+			console.log("blur")
 			if (!this.tutorialManager.isActive) {
 				if (this.engine.isGameOver) {
 					this.saveGameState()
@@ -485,31 +477,13 @@ class GameApp {
 			}
 		})
 
-		// Player Name Persistence
-		const nameInput = document.getElementById("player-name-input")
-		if (nameInput) {
-			// Load name on page load
-			const savedName = localStorage.getItem("bp_player_name")
-			if (savedName) (nameInput as HTMLInputElement).value = savedName
-
-			// Save name when input loses focus (blur). The 'input' event was too aggressive.
-			nameInput.addEventListener("blur", (e) => {
-				const value = (e.target as HTMLInputElement).value.trim()
-				if (value) {
-					localStorage.setItem("bp_player_name", value)
-				} else {
-					localStorage.removeItem("bp_player_name")
-				}
-			})
-		}
-
-		//? Disabled the following because the purpose was to pause when focus is lost while devtools are open, but that doesn't work; And having it enabled results in the game pausing when devtools are opened/closed, which can be annoying in dev testing
-		// // when document.visibilityState === "hidden", pause game
-		// document.addEventListener("visibilitychange", () => {
-		// 	if (document.visibilityState === "hidden" && !this.tutorialManager.isActive) {
-		// 		this.pauseGame()
-		// 	}
-		// })
+		// when document.visibilityState === "hidden", pause game
+		document.addEventListener("visibilitychange", () => {
+			console.log("visibilitychange")
+			if (document.visibilityState === "hidden" && !this.tutorialManager.isActive) {
+				this.pauseGame()
+			}
+		})
 	}
 
 	initSettings() {
@@ -549,6 +523,11 @@ class GameApp {
 
 		// Close modal with Escape key
 		document.addEventListener("keydown", (e) => {
+			// make sure not in a text input field
+			const activeElement = document.activeElement
+			if (activeElement && activeElement.tagName.toLowerCase() === "input") {
+				return
+			}
 			if (e.key === "Escape" && modal && !modal.classList.contains("hidden")) {
 				e.preventDefault()
 				modal.classList.add("hidden")
@@ -594,11 +573,6 @@ class GameApp {
 	}
 
 	restart() {
-		// If we are currently replaying, exit replay mode first
-		if (this.isInReplayMode) {
-			this.exitReplay()
-		}
-
 		// Clear pause state and timer
 		if (this.isPaused) {
 			this.resumeGame()
@@ -627,6 +601,10 @@ class GameApp {
 		}
 
 		localStorage.removeItem("bp_save_state")
+		// Clear previous run's submission status from localStorage
+		if (this.runId) {
+			localStorage.removeItem(`bp_submitted_run_${this.runId}`)
+		}
 		this.scoreSubmitted = false // Reset submission state
 		this.loadHighScore() // Load high score into the new engine
 		this.dragShape = null
@@ -651,6 +629,7 @@ class GameApp {
 		// cause updateUI() to re-show the game-over overlay. The render loop and
 		// subsequent state changes will naturally drive the UI.
 		this.startNewRun()
+		this.updatePlayerNameUI() // Ensure player name UI is updated on restart
 	}
 
 	loadHighScore() {
@@ -668,8 +647,8 @@ class GameApp {
 	}
 
 	saveGameState() {
-		// Don't save if in tutorial or replay (saving game over state is allowed)
-		if (this.tutorialManager.isActive || this.isInReplayMode) {
+		// Don't save if in tutorial (saving game over state is allowed)
+		if (this.tutorialManager.isActive) {
 			return
 		}
 
@@ -683,6 +662,7 @@ class GameApp {
 			timestamp: Date.now(),
 			priorBestScore: this.priorBestScore,
 			highScoreNotificationShown: this.highScoreNotificationShown,
+			runId: this.runId!, // Save the current runId (assert non-null)
 		}
 
 		localStorage.setItem("bp_save_state", JSON.stringify(state))
@@ -710,6 +690,7 @@ class GameApp {
 
 			this.priorBestScore = state.priorBestScore ?? this.engine.bestScore
 			this.highScoreNotificationShown = state.highScoreNotificationShown ?? false
+			this.runId = state.runId // Restore runId from saved state
 
 			// If checking paused state, ensure UI reflects it
 			if (this.isPaused) {
@@ -723,6 +704,7 @@ class GameApp {
 
 			// Update UI
 			this.updateUI()
+			this.updatePlayerNameUI() // Also update player name UI on load
 
 			return true
 		} catch (e) {
@@ -731,29 +713,47 @@ class GameApp {
 		}
 	}
 
-	private attemptScoreSubmission(): void {
+	private async attemptScoreSubmission(manualSubmit: boolean = false): Promise<void> {
 		if (this.scoreSubmitted || this.engine.score <= 0) {
 			console.warn("Attempted to submit score but either already submitted or score is 0. Aborting.")
 			return
 		}
 
-		// Prefer the current value in the input field, falling back to persisted name or a default.
-		const nameInput = document.getElementById("player-name-input") as HTMLInputElement | null
-		let playerName = (nameInput?.value ?? "").trim()
-
-		if (!playerName) {
-			playerName = (localStorage.getItem("bp_player_name") ?? "Player").trim() || "Player"
+		// Ensure we have a player name before proceeding.
+		// If the submission button was clicked, the name should already be in localStorage or input.
+		const playerName = localStorage.getItem("bp_player_name")
+		if (!playerName || playerName.trim() === "") {
+			console.error("No player name found. Aborting score submission.")
+			// Re-enable submission UI in case of an unexpected state
+			this.updateSubmissionUI("idle", "Please enter a player name before submitting.")
+			return
 		}
 
-		// Persist the name so it's pre-filled next time.
-		if (playerName) {
-			localStorage.setItem("bp_player_name", playerName)
+		const currentScore = this.engine.score
+
+		// 1. Fetch current leaderboard scores
+		const leaderboard = await this.fetchLeaderboardScores()
+
+		// 2. Determine if the current score is within the top 20
+		const TOP_N = 20
+		let shouldSubmit = false
+		if (leaderboard.length < TOP_N) {
+			shouldSubmit = true // Always submit if leaderboard isn't full yet
 		} else {
-			localStorage.removeItem("bp_player_name")
+			// Check if current score is greater than the 20th score
+			const twentyFourthScore = leaderboard[TOP_N - 1]?.score ?? 0 // Get the 20th score (0-indexed)
+			if (currentScore > twentyFourthScore) {
+				shouldSubmit = true
+			}
+		}
+
+		if (!shouldSubmit && !manualSubmit) {
+			this.updateSubmissionUI("idle", `Score ${currentScore} is not in the top ${TOP_N}.`)
+			return // Do not proceed with submission
 		}
 
 		this.updateSubmissionUI("submitting")
-		this.submitScoreToLeaderboard(playerName)
+		this.submitScoreToLeaderboard(playerName.trim())
 	}
 
 	// --- LEADERBOARD INTEGRATION ---
@@ -770,6 +770,21 @@ class GameApp {
 		const modal = document.getElementById("leaderboard-modal")
 		if (!modal) return
 		modal.classList.add("hidden")
+	}
+
+	private async fetchLeaderboardScores(): Promise<Array<{ name: string; score: number }>> {
+		try {
+			const resp = await fetch("/api/leaderboard?limit=100")
+			if (!resp.ok) {
+				throw new Error(`Leaderboard request failed with status ${resp.status}`)
+			}
+			const data: any = await resp.json()
+			const verified = Array.isArray(data?.verified) ? data.verified : []
+			return verified
+		} catch (e) {
+			console.error("Failed to fetch leaderboard scores:", e)
+			return []
+		}
 	}
 
 	private async fetchAndRenderLeaderboard() {
@@ -791,7 +806,7 @@ class GameApp {
 		}
 
 		try {
-			const resp = await fetch("/api/leaderboard?limit=20")
+			const resp = await fetch("/api/leaderboard?limit=100")
 			if (!resp.ok) {
 				throw new Error(`Leaderboard request failed with status ${resp.status}`)
 			}
@@ -825,6 +840,12 @@ class GameApp {
 			})
 
 			this.updateRankingSummaryFromData(verified)
+
+			// Scroll to self-submitted entry if found
+			const selfEntryEl = verifiedList.querySelector(".leaderboard-self")
+			if (selfEntryEl) {
+				selfEntryEl.scrollIntoView({ behavior: "smooth", block: "center" })
+			}
 		} catch (e) {
 			console.error("Failed to fetch leaderboard:", e)
 			if (errorEl) {
@@ -863,9 +884,6 @@ class GameApp {
 	}
 
 	private async submitScoreToLeaderboard(name: string): Promise<void> {
-		console.log(`[Score Submit] Attempting to submit score ${this.engine.score} for user "${name}"...`)
-
-		// We require runId and seed for submission
 		if (!this.runId || this.gameSeed === null || this.scoreSubmitted) {
 			console.warn("Cannot submit score: runId or seed is missing, or score already submitted. Aborting.")
 			return
@@ -873,14 +891,8 @@ class GameApp {
 
 		this.scoreSubmitted = true
 
-		// 1. Get replay state (includes seed and actions)
-		const replayState = this.engine.replayManager.getReplayState(this.engine.score)
-
-		// 2. Store runId and seed before clearing to prevent resubmission
 		const runId = this.runId
 		const seed = this.gameSeed
-		this.runId = null
-		this.gameSeed = null
 		// Do NOT clear scoreSubmitted.
 
 		try {
@@ -888,9 +900,7 @@ class GameApp {
 				runId: runId,
 				name: name,
 				score: this.engine.score,
-				replay: replayState,
 			}
-			console.log("[Score Submit] Payload:", payload)
 
 			const response = await fetch("/api/leaderboard/submit", {
 				method: "POST",
@@ -930,13 +940,6 @@ class GameApp {
 
 			if (response.ok) {
 				if (data && typeof data === "object") {
-					console.log("[Score Submit] Submission successful.", {
-						status,
-						url,
-						apiStatus: (data as any).status,
-					})
-
-					const statusField = (data as any).status
 					const entry = (data as any).entry
 					if (entry && typeof entry === "object") {
 						this.lastSubmittedEntry = {
@@ -950,16 +953,11 @@ class GameApp {
 						}
 					}
 				} else {
-					console.log("[Score Submit] Submission successful with non-JSON or unexpected body.", {
-						status,
-						url,
-						contentType,
-						rawBodySnippet: rawBody ? rawBody.slice(0, 200) : null,
-					})
 					this.lastSubmittedEntry = {
 						name,
 						score: this.engine.score,
 					}
+					localStorage.setItem(`bp_submitted_run_${runId}`, "true")
 				}
 				this.updateSubmissionUI("success")
 
@@ -986,6 +984,42 @@ class GameApp {
 		}
 	}
 	// -----------------------------------------------
+	private updatePlayerNameUI() {
+		console.log("[updatePlayerNameUI] Function called.")
+		const playerName = localStorage.getItem("bp_player_name")
+
+		// Ensure playerNameSubmissionContainer is always visible as it contains the submit button
+		if (this.playerNameSubmissionContainer) {
+			this.playerNameSubmissionContainer.classList.remove("hidden")
+		}
+
+		if (playerName && playerName.trim() !== "") {
+			// Name is set: show display, hide input, pre-fill input (for potential future edit), enable submit button
+			this.playerNameDisplay?.classList.remove("hidden")
+			if (this.displayPlayerNameSpan) {
+				this.displayPlayerNameSpan.textContent = playerName
+			}
+			if (this.playerNameInput) {
+				this.playerNameInput.classList.add("hidden") // Hide the input field
+				this.playerNameInput.value = playerName // Keep value updated
+			}
+			if (this.submitScoreBtn) {
+				console.log("[updatePlayerNameUI] Player name exists. Enabling submit button.")
+				this.submitScoreBtn.disabled = false
+			}
+		} else {
+			// No name: hide display, show input, clear input, disable submit button
+			this.playerNameDisplay?.classList.add("hidden")
+			if (this.playerNameInput) {
+				this.playerNameInput.classList.remove("hidden") // Show the input field
+				this.playerNameInput.value = "" // Clear input on game over if no name was set
+			}
+			if (this.submitScoreBtn) {
+				console.log("[updatePlayerNameUI] No player name. Disabling submit button.")
+				this.submitScoreBtn.disabled = true
+			}
+		}
+	}
 
 	updateUI() {
 		document.getElementById("current-score")!.textContent = this.engine.score.toString()
@@ -1004,6 +1038,10 @@ class GameApp {
 			// Only run transition logic if overlay was effectively hidden (or we are initializing)
 			if (overlay && overlay.classList.contains("hidden")) {
 				overlay.classList.remove("hidden")
+				// Check if this run was already submitted on a previous session/refresh
+				if (this.runId && localStorage.getItem(`bp_submitted_run_${this.runId}`)) {
+					this.scoreSubmitted = true
+				}
 				// Reset submission UI each time the game over screen is first shown
 				this.updateSubmissionUI("idle")
 				document.getElementById("final-score")!.textContent = this.engine.score.toString()
@@ -1040,8 +1078,22 @@ class GameApp {
 					}, delay)
 
 					// Submit score to leaderboard (only once, if score > 0)
-					if (!this.scoreSubmitted && this.engine.score > 0) {
+					// Only attempt submission if a player name is set
+					const playerName = localStorage.getItem("bp_player_name")
+					console.log(
+						"[Autosubmit Debug] Checking conditions:",
+						"scoreSubmitted:",
+						this.scoreSubmitted,
+						"engine.score:",
+						this.engine.score,
+						"playerName:",
+						playerName
+					)
+					if (!this.scoreSubmitted && this.engine.score > 0 && playerName && playerName.trim() !== "") {
+						console.log("[Autosubmit Debug] Conditions met. Attempting submission.")
 						this.attemptScoreSubmission()
+					} else {
+						console.log("[Autosubmit Debug] Conditions not met. Skipping submission.")
 					}
 				}
 			}
@@ -1068,7 +1120,7 @@ class GameApp {
 			this.handTimerRatio = clamped
 		}
 
-		if (this.isInReplayMode || this.engine.isGameOver) {
+		if (this.engine.isGameOver) {
 			applyFill(barFillBottom, 0, null)
 			this.handTimerRatio = null
 			return
@@ -1092,12 +1144,7 @@ class GameApp {
 
 	private syncHandCountdown(now: number) {
 		// Don't run countdown logic until a real run has been initialized.
-		if (!this.runInitialized) {
-			this.updateCountdownUI(null)
-			return
-		}
-
-		if (this.isInReplayMode) {
+		if (!this.runInitialized || !this.firstBlockPlaced) {
 			this.updateCountdownUI(null)
 			return
 		}
@@ -1169,7 +1216,6 @@ class GameApp {
 
 		bottomBar.style.width = commonWidth
 		bottomBar.style.left = `${canvasStyleLeft + boardRect.x}px`
-		// place just below board but above tray area
 		bottomBar.style.top = `${canvasStyleTop + boardRect.y + boardRect.h + 8}px`
 
 		// If layout recalculated and bars would go outside container, clamp
@@ -1181,7 +1227,7 @@ class GameApp {
 	}
 
 	private pauseGame() {
-		if (this.isPaused || this.engine.isGameOver || this.isInReplayMode) return
+		if (this.isPaused || this.engine.isGameOver) return
 		this.isPaused = true
 		this.pauseStartedAt = Date.now()
 		// Clear any in-progress drag so resume is clean
@@ -1209,7 +1255,7 @@ class GameApp {
 	}
 
 	private togglePause() {
-		if (this.isInReplayMode || this.engine.isGameOver) return
+		if (this.engine.isGameOver) return
 		if (this.isPaused) this.resumeGame()
 		else this.pauseGame()
 	}
@@ -1375,6 +1421,10 @@ class GameApp {
 				isTutorial: this.tutorialManager.isActive,
 			})
 			if (result.valid) {
+				if (!this.firstBlockPlaced) {
+					this.firstBlockPlaced = true
+					this.runInitialized = true
+				}
 				// Spawn animations for cleared cells
 				if (result.clearedCells && result.clearedCells.length > 0) {
 					result.clearedCells.forEach((pt) => {
@@ -1419,7 +1469,7 @@ class GameApp {
 		const now = Date.now()
 
 		// Advance game state (powerup timers/spawns) only during live play
-		if (!this.isInReplayMode && !this.isPaused) {
+		if (!this.isPaused) {
 			this.engine.update(now)
 		}
 
@@ -1427,8 +1477,8 @@ class GameApp {
 		this.syncHandCountdown(now)
 		this.positionTimerBars()
 
-		// Use replay engine if in replay mode, otherwise use main engine
-		const activeEngine = this.isInReplayMode && this.replayPlayer ? this.replayPlayer.getEngine() : this.engine
+		// Use main engine
+		const activeEngine = this.engine
 
 		// Calculate placeability for each shape in tray
 		const placeability = activeEngine.currentShapes.map((s) => {
@@ -1436,22 +1486,15 @@ class GameApp {
 			return activeEngine.canPlaceShape(s)
 		})
 
-		if (!this.isInReplayMode) {
-			this.updateStatusFace(placeability)
-		}
+		this.updateStatusFace(placeability)
 
-		// In replay mode, don't show drag state
-		const dragShape = this.isInReplayMode ? null : this.dragShape
-		const dragPos = this.isInReplayMode ? null : this.dragPos
-		const ghostPos = this.isInReplayMode ? null : this.ghostPos
+		// Show drag state
+		const dragShape = this.dragShape
+		const dragPos = this.dragPos
+		const ghostPos = this.ghostPos
 
 		const handRatio = this.handTimerRatio
 		this.renderer.draw(activeEngine, activeEngine, dragShape, dragPos, ghostPos, placeability, now, handRatio, this.timerPanic)
-
-		// Update replay UI if in replay mode
-		if (this.isInReplayMode) {
-			this.updateReplayUI()
-		}
 
 		requestAnimationFrame(this.loop.bind(this))
 	}
@@ -1514,87 +1557,6 @@ class GameApp {
 		}
 	}
 
-	startReplay(): void {
-		// Get replay state from current game
-		const replayState = this.engine.replayManager.getReplayState(this.engine.score)
-
-		// Logs the replay for export purposes as requested
-		console.log("Replay Data", JSON.stringify(replayState))
-
-		if (replayState.moves.length === 0) {
-			alert("No moves to replay!")
-			return
-		}
-
-		// Store replay state for UI verification + copy button
-		this.currentReplayState = replayState
-		this.expectedReplayScore = replayState.finalScore
-
-		// Create replay player
-		this.replayPlayer = new ReplayPlayer(replayState, this.renderer)
-		this.isInReplayMode = true
-
-		// Hide game over overlay and HEADER, show replay overlay
-		document.querySelector("header")?.classList.add("hidden")
-		document.getElementById("game-over-overlay")?.classList.add("hidden")
-		document.getElementById("replay-overlay")?.classList.remove("hidden")
-
-		// Automatically show the first move and start playing
-		this.replayPlayer.goToFirst()
-		this.replayPlayer.play()
-
-		// Initialize replay UI
-		this.updateReplayUI()
-	}
-
-	exitReplay(): void {
-		if (this.replayPlayer) {
-			this.replayPlayer.destroy()
-			this.replayPlayer = null
-		}
-
-		this.isInReplayMode = false
-		this.currentReplayState = null
-		this.expectedReplayScore = null
-
-		// Hide replay overlay, show game over overlay and restore HEADER
-		document.getElementById("replay-overlay")?.classList.add("hidden")
-		document.querySelector("header")?.classList.remove("hidden")
-		document.getElementById("game-over-overlay")?.classList.remove("hidden")
-	}
-
-	updateReplayUI(): void {
-		if (!this.replayPlayer) return
-
-		const moveIndex = this.replayPlayer.getCurrentMoveIndex()
-		const totalMoves = this.replayPlayer.getTotalMoves()
-		const score = this.replayPlayer.getCurrentScore()
-
-		// Update display
-		const moveEl = document.getElementById("replay-move")
-		const totalEl = document.getElementById("replay-total")
-		const scoreEl = document.getElementById("replay-score")
-		const expectedEl = document.getElementById("replay-expected-score")
-		const resultEl = document.getElementById("replay-result")
-
-		if (moveEl) moveEl.textContent = (moveIndex + 1).toString()
-		if (totalEl) totalEl.textContent = totalMoves.toString()
-		if (scoreEl) scoreEl.textContent = score.toString()
-
-		if (expectedEl) {
-			expectedEl.textContent = this.expectedReplayScore === null ? "-" : this.expectedReplayScore.toString()
-		}
-
-		const atEnd = totalMoves > 0 && moveIndex === totalMoves - 1
-		if (resultEl) {
-			if (!atEnd || this.expectedReplayScore === null) {
-				resultEl.textContent = ""
-			} else {
-				resultEl.textContent = score === this.expectedReplayScore ? "PASS" : "FAIL"
-			}
-		}
-	}
-
 	private showHighScoreNotification() {
 		const el = document.getElementById("highscore-notification")
 		if (!el) return
@@ -1614,6 +1576,11 @@ class GameApp {
 	}
 
 	async startNewRun() {
+		// Clear previous run's submission status from localStorage
+		if (this.runId) {
+			localStorage.removeItem(`bp_submitted_run_${this.runId}`)
+		}
+
 		// Reset submission state and generate new runId/seed for the new run.
 		this.scoreSubmitted = false
 		this.runId = this.generateRunId()
@@ -1626,8 +1593,8 @@ class GameApp {
 			this.engine.spawnTestPowerup()
 		}
 
-		// Mark the run as active and start the hand timer based on the engine's handGeneration.
-		this.runInitialized = true
+		// The runInitialized state will now be handled by the first block placement
+		this.firstBlockPlaced = false
 		this.updateCountdownUI(null)
 		this.syncHandCountdown(Date.now())
 		this.updateUI() // Explicitly update UI after starting new run

@@ -1,10 +1,8 @@
 import { ALL_SHAPES, SHAPE_BASE_INDEX_MAP, SHAPE_CATEGORIES, SHAPE_VARIATION_COUNTS, SHAPE_WEIGHTS } from "./shapes"
 import { GRID_SIZE, GameState, Grid, MoveResult, Point, SavedEngineState, SavedPowerupState, Shape } from "./types"
 import { Powerup, PowerupActivation, PowerupManager } from "./powerups"
-import { ReplayManager, ReplayState } from "./replay"
 
 import { RNG } from "./rng"
-import { runReplay } from "./runReplay"
 
 export class GameEngine {
 	// Persistence
@@ -63,7 +61,6 @@ export class GameEngine {
 	seed: number
 	moves: number = 0
 	rng: RNG
-	replayManager: ReplayManager
 	powerupManager: PowerupManager
 	lastUpdateTime: number = Date.now()
 	lastMoveTime: number = Date.now()
@@ -73,41 +70,9 @@ export class GameEngine {
 		this.score = 0
 		this.seed = seed // Store seed
 		this.rng = new RNG(seed)
-		this.replayManager = new ReplayManager(seed)
 		this.powerupManager = new PowerupManager(this.rng)
 		this.currentShapes = []
 		this.refillShapes()
-	}
-
-	loadReplay(replayState: ReplayState) {
-		this.seed = replayState.seed
-		this.score = 0 // Score needs to be recomputed
-		this.moves = 0
-		this.isGameOver = false
-		this.grid.fill(0) // Clear grid
-		this.rng = new RNG(this.seed) // Reset RNG with original seed
-		this.replayManager = new ReplayManager(this.seed) // Reset replay manager
-
-		this.currentShapes = [] // Clear current shapes
-		this.refillShapes() // Generate the initial hand for the replay game
-
-		// Apply each move from the replay to reconstruct the game state
-		for (const action of replayState.moves) {
-			// Find the shape in the current hand
-			const shapeIndex = this.currentShapes.findIndex((s) => s && s.id === action.shapeId)
-			if (shapeIndex === -1) {
-				console.error("Failed to load replay: Shape not in hand during move application.")
-				this.reset(Date.now()) // Fallback to a new game if replay is invalid
-				return
-			}
-
-			const result = this.place(shapeIndex, action.boardRow, action.boardCol, undefined, action.timestamp)
-			if (!result.valid) {
-				console.error("Failed to load replay: Invalid placement during move application.")
-				this.reset(Date.now()) // Fallback to a new game if replay is invalid
-				return
-			}
-		}
 	}
 
 	private getIndex(r: number, c: number): number {
@@ -123,9 +88,6 @@ export class GameEngine {
 	// Only one diagonal shape allowed per hand
 	refillShapes(timestamp: number = Date.now()) {
 		if (this.currentShapes.every((s) => s === null)) {
-			console.log("=== REFILLING SHAPES ===")
-			console.log("RNG state before:", this.rng.getState())
-			console.log("Timestamp:", timestamp)
 			const selectedIndices: number[] = []
 			const selectedShapes: Shape[] = []
 			const selectedCategories = new Set<string>()
@@ -173,12 +135,6 @@ export class GameEngine {
 			}
 
 			this.currentShapes = selectedShapes
-			console.log(
-				"New shapes:",
-				selectedShapes.map((s) => s.id)
-			)
-			console.log("RNG state after:", this.rng.getState())
-
 			this.handGeneration++
 			this.handDealtAt = timestamp
 		}
@@ -354,16 +310,8 @@ export class GameEngine {
 		const gameOver = !this.canPlaceAny()
 		this.isGameOver = gameOver // Update state
 
-		// If game is over, save the replay
-		if (this.isGameOver) {
-			this.replayManager.saveReplayToLocalStorage(this.score)
-		}
-
 		this.moves++ // Increment moves
 		this.lastMoveTime = now
-
-		// Record move for replay
-		this.replayManager.recordMove(shape, boardRow, boardCol, this.score, rowsToClear, colsToClear, boxesToClear)
 
 		// Combine cleared cells from lines/boxes and powerup
 		const allClearedCells = Array.from(cellsToClear).map((idx) => ({
@@ -414,10 +362,8 @@ export class GameEngine {
 	}
 
 	reset(seed: number = Date.now()) {
-		ReplayManager.clearReplayFromLocalStorage() // Clear old replay data
 		this.seed = seed
 		this.rng = new RNG(seed)
-		this.replayManager = new ReplayManager(seed)
 		this.powerupManager = new PowerupManager(this.rng)
 		this.grid = new Array(GRID_SIZE * GRID_SIZE).fill(0)
 		this.score = 0

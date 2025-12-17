@@ -5,7 +5,6 @@ import * as validation from "../_lib/validation"
 
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 
-
 import { supabase } from "../_lib/supabase"
 
 // The following Postgres functions are required for this endpoint:
@@ -26,7 +25,6 @@ type SubmitBody = {
 	runId: unknown
 	name: unknown
 	score: unknown
-
 }
 
 type SubmitResponse = {
@@ -103,11 +101,7 @@ export async function handler(req: VercelRequest, res: VercelResponse) {
 		}
 
 		// F) Insert score directly (no verification)
-		const { data: entry, error: insertError } = await supabase
-			.from("scores")
-			.insert({ run_id: runId, name: nameV.value, score: scoreV.value })
-			.select()
-			.single()
+		const { data: entry, error: insertError } = await supabase.from("scores").insert({ run_id: runId, name: nameV.value, score: scoreV.value }).select().single()
 
 		if (insertError) {
 			if (insertError.code === "23505") {

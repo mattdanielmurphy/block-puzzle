@@ -1,5 +1,3 @@
-import { ReplayState } from "../../src/engine/replay"
-
 export const LIMITS = {
 	nameMinLength: 1,
 	nameMaxLength: 20,
@@ -34,23 +32,4 @@ export function validateScore(score: unknown): ValidationResult<number> {
 		return { ok: false, message: `Score must be an integer between ${LIMITS.scoreMinValue} and ${LIMITS.scoreMaxValue}.` }
 	}
 	return { ok: true, value: score }
-}
-
-export function validateReplay(replay: unknown): ValidationResult<ReplayState> {
-	// Basic structural validation for replay object
-	if (typeof replay !== "object" || replay === null) {
-		return { ok: false, message: "Replay must be an object." }
-	}
-	const rs = replay as ReplayState
-
-	if (typeof rs.seed !== "number" || !Number.isInteger(rs.seed)) {
-		return { ok: false, message: "Replay seed must be an integer." }
-	}
-	if (!Array.isArray(rs.moves)) {
-		return { ok: false, message: "Replay moves must be an array." }
-	}
-	// Further deep validation of actions can be done in runReplay to avoid
-	// sending too much data over the network if it's already invalid.
-
-	return { ok: true, value: rs }
 }

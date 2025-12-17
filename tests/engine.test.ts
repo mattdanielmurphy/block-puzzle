@@ -1,6 +1,5 @@
 import { GameEngine } from '../src/engine/logic';
 import { ALL_SHAPES } from '../src/engine/shapes';
-import { runReplay } from '../src/engine/runReplay';
 
 console.log("Starting Engine Tests...");
 
@@ -96,53 +95,12 @@ function testGameOver() {
     console.log("✅ testGameOver passed");
 }
 
-function testReplayVerification() {
-    const game = new GameEngine(54321); // Use a fixed seed for determinism
-
-    // Ensure we have at least two shapes in hand to perform moves
-    assertTrue(game.currentShapes.length >= 2, "Game should start with at least 2 shapes");
-    const s1 = game.currentShapes[0];
-    const s2 = game.currentShapes[1];
-    assertTrue(s1 !== null && s2 !== null, "First two shapes in hand should not be null");
-
-    // Move 1: Place s1 at (0,0) 
-    game.place(0, 0, 0); 
-    const expectedScore1 = s1!.cells.length; // First move, no multiplier
-    assertEqual(game.score, expectedScore1, `Score after first placement (${s1!.id})`); 
-    
-    // Move 2: Place s2 at (0,1)
-    // Find the index of s2 in the current hand (it should be at index 1 initially, but might shift if s0 was placed)
-    const s2Index = game.currentShapes.findIndex(s => s && s.id === s2!.id);
-    assertTrue(s2Index !== -1, `${s2!.id} should be in hand for second move`);
-    game.place(s2Index, 0, 1);
-    
-    // Score for second move: base points * 1.5 multiplier (floor)
-    const pointsAddedByS2 = Math.floor(s2!.cells.length * 1.5);
-    const expectedScore2 = expectedScore1 + pointsAddedByS2;
-
-    assertEqual(game.score, expectedScore2, `Score after second placement (${s2!.id})`); 
-
-    const finalScore = game.score;
-    const replayState = game.replayManager.getReplayState(finalScore);
-
-    // Run replay verification
-    const replayVerificationResult = runReplay({
-        seed: replayState.seed,
-        actions: replayState.moves,
-    });
-
-    assertTrue(replayVerificationResult.isValid, "Replay verification should be valid");
-    assertEqual(replayVerificationResult.finalScore, finalScore, "Replay final score should match original");
-    console.log("✅ testReplayVerification passed");
-}
-
 try {
     testInitialState();
     testPlacement();
     testClearing();
     testSimultaneousClear();
     testGameOver();
-    testReplayVerification(); // Add the new test here
     console.log("All tests passed!");
 } catch (e) {
     console.error("Test failed:", e);

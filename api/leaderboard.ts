@@ -4,6 +4,7 @@ import * as validation from "./_lib/validation"
 
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { errorJson, json } from "./_lib/http"
+
 import { supabase } from "./_lib/supabase"
 
 // Database schema assumed for this endpoint:
@@ -33,7 +34,6 @@ type LeaderboardResponse = {
 	ok: true
 	verified: VerifiedEntry[]
 }
-
 
 type VerifiedScore = {
 	run_id: string
@@ -73,22 +73,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
 	const { limit: limitParam } = req.query
 	const limit = Math.max(1, Math.min(100, limitParam ? Number(limitParam) : 10))
-	console.log(`Leaderboard: limit=${limit}`)
 	if (!Number.isFinite(limit)) return errorJson(res, 400, "VALIDATION_ERROR", "limit must be a number")
 
-	console.log(`Leaderboard: Fetching top ${limit} scores from Supabase.`)
-	const { data: verified, error: verifiedError } = await supabase
-		.from("scores")
-		.select("run_id, name, score, created_at")
-		.order("score", { ascending: false })
-		.limit(limit)
+	const { data: verified, error: verifiedError } = await supabase.from("scores").select("run_id, name, score, created_at").order("score", { ascending: false }).limit(limit)
 
 	if (verifiedError) {
-		console.error("Leaderboard: Error fetching verified scores from Supabase:", verifiedError)
 		return errorJson(res, 500, "INTERNAL_SERVER_ERROR", "Could not fetch leaderboard.")
 	}
-
-	console.log("Leaderboard: Final 'verified' entries:", verified)
 
 	const formattedVerified: VerifiedEntry[] = (verified || []).map((v: VerifiedScore) => ({
 		run_id: v.run_id,
@@ -98,6 +89,5 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 	}))
 
 	const resp: LeaderboardResponse = { ok: true, verified: formattedVerified }
-	console.log("Leaderboard: Final response being sent:", resp)
 	return json(res, 200, resp)
 }

@@ -1,8 +1,3 @@
-// Dummy runToken generation/verification for now.
-// In a real application, this would involve JWTs, secure signing,
-// and potentially checking against a database to prevent replay attacks
-// or ensure token uniqueness/validity.
-
 import { sha256 } from "./crypto" // Assuming a crypto.ts in same _lib
 
 const SECRET_KEY = process.env.RUN_TOKEN_SECRET || "super-secret-default-key-for-dev"

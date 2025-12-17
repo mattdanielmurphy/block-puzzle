@@ -30,3 +30,5 @@
 - `npm run build` completes successfully.
 - Game loads without console errors.
 - New features work on Mobile & Desktop (responsive canvas).
+
+- **Leaderboard Auto-Submission**: The game now automatically submits scores to the leaderboard if they are within the top 20. This check happens at game over.

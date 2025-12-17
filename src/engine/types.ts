@@ -65,4 +65,5 @@ export interface SavedAppState {
 	timestamp: number // Time of save
 	priorBestScore?: number
 	highScoreNotificationShown?: boolean
+	runId: string // Add runId to saved state
 }

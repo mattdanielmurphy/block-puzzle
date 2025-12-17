@@ -7,7 +7,7 @@
   "private": true,
   "scripts": {
     "build": "node build.js",
-    "watch": "npx -y nodemon --watch src --watch index.html --watch styles.css --ext ts,html,css --exec \"npm run build\"",
+    "watch": "npx -y nodemon --watch src --watch api --watch index.html --watch styles.css --ext ts,html,css --exec \"npm run build\"",
     "start": "npm run build && npx http-server dist -c-1 -p 8000",
     "dev:web": "vite",
     "dev:api": "vercel dev --listen 3000",
@@ -20,6 +20,7 @@
   },
   "devDependencies": {
     "concurrently": "^9.2.1",
-    "vite": "^6.4.1"
+    "vite": "^6.4.1",
+    "vitest": "^4.0.16"
   }
 }

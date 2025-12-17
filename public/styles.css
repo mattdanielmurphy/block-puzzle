@@ -252,7 +252,6 @@ canvas {
 }
 
 #restart-btn,
-#replay-btn,
 #close-settings-btn {
     margin-top: 30px;
     padding: 12px 30px;
@@ -262,10 +261,6 @@ canvas {
     border-radius: 25px;
     font-weight: bold;
     cursor: pointer;
-}
-
-#replay-btn {
-    margin-right: 10px;
 }
 
 /* Settings Modal Specifics */
@@ -356,59 +351,6 @@ input[type=range]:focus::-webkit-slider-thumb {
 
 input[type=range]:active::-webkit-slider-thumb {
     transform: scale(1.1);
-}
-
-/* Replay Controls */
-.replay-controls {
-    background: var(--board-bg);
-    padding: 30px;
-    border-radius: 12px;
-    width: 90%;
-    max-width: 500px;
-    text-align: center;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-}
-
-.replay-controls h2 {
-    margin-top: 0;
-    margin-bottom: 20px;
-    color: var(--text-color);
-}
-
-.replay-info {
-    display: flex;
-    justify-content: space-around;
-    margin-bottom: 20px;
-    font-size: 1.1rem;
-    color: #ccc;
-}
-
-.replay-info span {
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-}
-
-.replay-info span span {
-    font-size: 1.5rem;
-    color: #fff;
-    font-weight: bold;
-}
-
-#replay-exit {
-    margin-top: 20px;
-    padding: 12px 30px;
-    font-size: 1.1rem;
-    background: var(--danger-color);
-    color: white;
-    border: none;
-    border-radius: 25px;
-    font-weight: bold;
-    cursor: pointer;
-}
-
-#replay-exit:hover {
-    background: #ff6b7a;
 }
 
 footer {
@@ -594,108 +536,6 @@ footer {
     border-color: #fff;
     color: #fff;
     background: rgba(255, 255, 255, 0.1);
-}
-
-/* Replay Overlay - Top Bar Style (matching Scenario Mode) */
-#replay-overlay {
-    /* Override .overlay properties to be a top bar */
-    position: relative !important;
-    top: 10px;
-    left: auto;
-    right: auto;
-    bottom: auto;
-    height: auto;
-    margin: 0;
-    background: transparent !important;
-    backdrop-filter: none !important;
-    display: flex;
-    /* keep as flex but specific alignment */
-    padding: 0;
-    min-height: auto;
-    /* Allow it to be smaller if needed, or match scenario */
-    z-index: 20;
-
-    /* Ensure it takes space like scenario mode */
-    width: 100%;
-    margin-bottom: 20px;
-    pointer-events: none;
-    /* Overlay wrapper itself shouldn't block, but children should */
-}
-
-/* When hidden, it should really be hidden */
-#replay-overlay.hidden {
-    display: none !important;
-}
-
-.replay-controls {
-    /* Match .scenario-mode .tutorial-box */
-    pointer-events: auto;
-    width: 100%;
-    max-width: 600px;
-    /* Match app width constraint */
-    border-radius: 12px;
-    padding: 10px 20px;
-    min-height: 60px;
-    /* Bit compacter */
-
-    display: flex !important;
-    flex-direction: row;
-    justify-content: space-between;
-    align-items: center;
-    gap: 10px;
-
-    background: var(--board-bg);
-    border: none;
-    border-bottom: 1px solid #333;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
-
-    margin: 0 auto;
-    /* Center it */
-}
-
-.replay-header {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 4px;
-    text-align: left;
-}
-
-.replay-controls h2 {
-    font-size: 1rem;
-    margin: 0;
-    color: var(--accent-color);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.replay-stats {
-    display: flex;
-    gap: 15px;
-    font-size: 0.9rem;
-    color: #ccc;
-}
-
-.replay-stats span span {
-    color: #fff;
-    font-weight: bold;
-}
-
-#replay-exit {
-    /* Modify button to fit nicely in the bar */
-    margin: 0;
-    padding: 6px 16px;
-    font-size: 0.8rem;
-    white-space: nowrap;
-    background: transparent;
-    border: 1px solid var(--danger-color);
-    color: var(--danger-color);
-    border-radius: 20px;
-}
-
-#replay-exit:hover {
-    background: var(--danger-color);
-    color: white;
 }
 
 #highscore-notification {
@@ -908,11 +748,7 @@ footer {
 
     /* Keep face prominent, just a bit smaller */
     #status-face {
-        width: 84px;
-        /* down from 96px */
-        height: 84px;
-        background-size: 525px 87.5px;
-        /* scales 600x100 down proportionally */
+        scale: .9;
     }
 
     /* Avoid overlay cards pushing wider than screen */
@@ -923,7 +759,6 @@ footer {
     }
 
     .modal-content,
-    .replay-controls,
     .leaderboard-content {
         width: 88vw;
         /* modestly tighter than the base 80%/90% rules */
@@ -939,7 +774,7 @@ footer {
     }
 
     .score-board {
-        gap: 12px;
+        gap: 1vw;
         /* was 30px */
     }
 
@@ -955,13 +790,7 @@ footer {
     }
 
     #status-face {
-        width: 72px;
-        /* was 96px */
-        height: 72px;
-        /* was 96px */
-        /* keep sprite behavior intact */
-        background-size: 450px 75px;
-        /* scales 600x100 down proportionally */
+        scale: .8;
     }
 
     #pause-btn,
@@ -1002,7 +831,6 @@ footer {
         /* was 30px */
     }
 
-    .replay-controls,
     .leaderboard-content {
         width: 92vw;
         /* avoid edge clipping */
