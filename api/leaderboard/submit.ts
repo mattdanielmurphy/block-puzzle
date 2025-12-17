@@ -5,7 +5,7 @@ import * as validation from "../_lib/validation"
 
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 
-import { runReplay } from "../../src/engine/runReplay"
+
 import { supabase } from "../_lib/supabase"
 
 // The following Postgres functions are required for this endpoint:
@@ -26,12 +26,13 @@ type SubmitBody = {
 	runId: unknown
 	name: unknown
 	score: unknown
-	replay?: unknown
+
 }
 
 type SubmitResponse = {
 	ok: true
-	status: "VERIFIED_ACCEPTED"
+
+	status: "ACCEPTED"
 	entry: { name: string; score: number; createdAt: string }
 }
 
@@ -89,6 +90,8 @@ export async function handler(req: VercelRequest, res: VercelResponse) {
 		}
 		const runId = body.runId.trim()
 
+		// E) Accept score without replay verification (for now)
+		// TODO: Add replay validation when/if cheating becomes a real problem
 		const nameV = validation.validateName(body.name)
 		if (nameV.ok === false) {
 			return http.errorJson(res, 400, "VALIDATION_ERROR", nameV.message)
@@ -99,55 +102,12 @@ export async function handler(req: VercelRequest, res: VercelResponse) {
 			return http.errorJson(res, 400, "VALIDATION_ERROR", scoreV.message)
 		}
 
-		// IMPORTANT: require replay for ALL submissions
-		const replayV = validation.validateReplay(body.replay)
-		if (replayV.ok === false) {
-			return http.errorJson(res, 400, "VALIDATION_ERROR", replayV.message)
-		}
-
-		// D) One-submit-per-runId: Check if runId already exists
-		const { data: existingRun, error: existingRunError } = await supabase.from("scores").select("run_id").eq("run_id", runId).limit(1)
-
-		if (existingRunError) {
-			console.error("Submit: Error checking for existing runId:", existingRunError)
-			return http.errorJson(res, 500, "INTERNAL_SERVER_ERROR", "Could not check for existing run.")
-		}
-
-		if (existingRun && existingRun.length > 0) {
-			return http.errorJson(res, 409, "ALREADY_SUBMITTED", "This runId has already been submitted")
-		}
-
-		// E) ALWAYS verify replay (rate limit verification attempts)
-		const verifyRl = await rateLimit.rateLimitMultiple([
-			{ bucket: "verify", ip: clientIp, limit: validation.LIMITS.verifyPerMinute, windowSec: 60 },
-			{ bucket: "verify", ip: clientIp, limit: validation.LIMITS.verifyPerHour, windowSec: 3600 },
-		])
-		if (verifyRl.ok === false) {
-			res.setHeader("Retry-After", String(verifyRl.retryAfterSec))
-			return http.errorJson(res, 429, "RATE_LIMITED", "Too many verification attempts")
-		}
-
-		const replayResult = runReplay({
-			seed: replayV.value.seed,
-			actions: replayV.value.moves,
-			options: {
-				maxActions: validation.LIMITS.maxReplayActions,
-				maxDurationMs: validation.LIMITS.maxReplayDurationMs,
-			},
-		})
-
-		if (!replayResult.isValid) {
-			return http.errorJson(res, 400, "REPLAY_INVALID", "Replay verification failed", { reason: replayResult.reason })
-		}
-
-		if (replayResult.finalScore !== scoreV.value) {
-			return http.errorJson(res, 400, "SCORE_MISMATCH", "Submitted score does not match replay", {
-				computedScore: replayResult.finalScore,
-			})
-		}
-
-		// F) Insert verified score
-		const { data: entry, error: insertError } = await supabase.from("scores").insert({ run_id: runId, name: nameV.value, score: scoreV.value }).select().single()
+		// F) Insert score directly (no verification)
+		const { data: entry, error: insertError } = await supabase
+			.from("scores")
+			.insert({ run_id: runId, name: nameV.value, score: scoreV.value })
+			.select()
+			.single()
 
 		if (insertError) {
 			if (insertError.code === "23505") {
@@ -162,7 +122,7 @@ export async function handler(req: VercelRequest, res: VercelResponse) {
 		const { error: deleteError } = await supabase.rpc("trim_verified_scores")
 		if (deleteError) console.error("Submit: Error trimming verified scores:", deleteError)
 
-		const resp: SubmitResponse = { ok: true, status: "VERIFIED_ACCEPTED", entry }
+		const resp: SubmitResponse = { ok: true, status: "ACCEPTED", entry }
 		return http.json(res, 200, resp)
 	} catch (error: any) {
 		console.error("Submit: Uncaught error in submit handler:", error.message || error)
