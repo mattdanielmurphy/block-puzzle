@@ -20,7 +20,10 @@
 					<div id="status-face" class="face-normal"></div>
 					<div class="score-label">SCORE <span id="current-score">0</span></div>
 				</div>
-				<button id="pause-btn" aria-label="Pause Game">⏸</button>
+				<div class="header-right-buttons">
+					<button id="leaderboard-header-btn" aria-label="View Leaderboard">🏆</button>
+					<button id="pause-btn" aria-label="Pause Game">⏸</button>
+				</div>
 			</header>
 
 			<div id="tutorial-overlay" class="hidden overlay pointer-events-none">
@@ -59,10 +62,21 @@
 					<h1>Game Over</h1>
 					<p id="game-over-highscore-label" class="hidden">New High Score!</p>
 					<p>Final Score: <span id="final-score">0</span></p>
+					<div class="name-input-group">
+						<label for="player-name-input">Your Name:</label>
+						<input type="text" id="player-name-input" maxlength="20" placeholder="Player" />
+					</div>
 					<p id="game-over-quote"></p>
-					<button id="restart-btn">Try Again</button>
-					<!-- <button id="replay-btn">▶ Replay Game</button> -->
-					<!-- Replay button is disabled for now because it's not working and not really necessary -->
+					<div id="submission-status-message" class="hidden"></div>
+					<div id="leaderboard-ranking" class="hidden"></div>
+					<div class="game-over-actions">
+						<button id="submit-score-btn" class="primary-btn">Submit Score</button>
+						<button id="leaderboard-gameover-btn" class="secondary-btn">View Leaderboard</button>
+						<div id="post-submission-actions">
+							<button id="restart-btn">Try Again</button>
+							<button id="replay-btn">▶ Replay Game</button>
+						</div>
+					</div>
 				</div>
 				<div id="pause-overlay" class="hidden overlay">
 					<h1>Paused</h1>
@@ -81,6 +95,24 @@
 						<button id="close-settings-btn">Close</button>
 					</div>
 				</div>
+
+				<div id="leaderboard-modal" class="hidden overlay">
+					<div class="leaderboard-content">
+						<div class="leaderboard-header">
+							<h2>Leaderboard</h2>
+							<button id="leaderboard-close-btn" class="secondary-btn small">Close</button>
+						</div>
+						<div id="leaderboard-error" class="leaderboard-message hidden"></div>
+						<div id="leaderboard-loading" class="leaderboard-message hidden">Loading...</div>
+						<div class="leaderboard-sections">
+							<section class="leaderboard-section">
+								<h3>Top Verified Scores</h3>
+								<ol id="leaderboard-verified-list" class="leaderboard-list"></ol>
+							</section>
+
+						</div>
+					</div>
+				</div>
 			</main>
 
 			<footer>
@@ -89,6 +121,24 @@
 		</div>
 		<script type="module" src="dist/src/main.js"></script>
 		<script>
+			// Player Name Persistence
+			const nameInput = document.getElementById("player-name-input")
+			if (nameInput) {
+				// Load name on page load
+				const savedName = localStorage.getItem("bp_player_name")
+				if (savedName) nameInput.value = savedName
+
+				// Save name when input loses focus (blur). The 'input' event was too aggressive.
+				nameInput.addEventListener("blur", (e) => {
+					const value = (e.target as HTMLInputElement).value.trim()
+					if (value) {
+						localStorage.setItem("bp_player_name", value)
+					} else {
+						localStorage.removeItem("bp_player_name")
+					}
+				})
+			}
+
 			if ("serviceWorker" in navigator) {
 				window.addEventListener("load", () => {
 					const isLocalhost = Boolean(

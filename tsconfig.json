@@ -2,6 +2,7 @@
   "compilerOptions": {
     "target": "ES2020",
     "module": "ESNext",
+    "skipLibCheck": true,
     "lib": [
       "DOM",
       "ES2020"
@@ -14,6 +15,7 @@
   },
   "include": [
     "src/**/*",
+    "api/**/*",
     "tests/**/*"
   ]
 }
