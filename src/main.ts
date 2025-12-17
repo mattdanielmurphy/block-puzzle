@@ -1006,6 +1006,9 @@ class GameApp {
 			if (this.submitScoreBtn) {
 				console.log("[updatePlayerNameUI] Player name exists. Enabling submit button.")
 				this.submitScoreBtn.disabled = false
+				this.submitScoreBtn.addEventListener("click", () => {
+					this.submitScoreToLeaderboard(playerName.trim())
+				})
 			}
 		} else {
 			// No name: hide display, show input, clear input, disable submit button
@@ -1080,15 +1083,7 @@ class GameApp {
 					// Submit score to leaderboard (only once, if score > 0)
 					// Only attempt submission if a player name is set
 					const playerName = localStorage.getItem("bp_player_name")
-					console.log(
-						"[Autosubmit Debug] Checking conditions:",
-						"scoreSubmitted:",
-						this.scoreSubmitted,
-						"engine.score:",
-						this.engine.score,
-						"playerName:",
-						playerName
-					)
+					console.log("[Autosubmit Debug] Checking conditions:", "scoreSubmitted:", this.scoreSubmitted, "engine.score:", this.engine.score, "playerName:", playerName)
 					if (!this.scoreSubmitted && this.engine.score > 0 && playerName && playerName.trim() !== "") {
 						console.log("[Autosubmit Debug] Conditions met. Attempting submission.")
 						this.attemptScoreSubmission()

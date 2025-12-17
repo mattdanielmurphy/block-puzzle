@@ -18,11 +18,11 @@ console.log("Build started...")
 // We won't strictly delete it to be safe, but tsc overwrites.
 
 // 2. Run TypeScript Compiler for client-side code
-console.log("Compiling client-side TypeScript...")
+console.log("Building frontend with Vite...")
 try {
-	execSync("npx tsc --build tsconfig.web.json", { stdio: "inherit" })
+	execSync("npx vite build", { stdio: "inherit" })
 } catch (e) {
-	console.error("Client-side TypeScript compilation failed.")
+	console.error("Frontend build failed.")
 	process.exit(1)
 }
 
