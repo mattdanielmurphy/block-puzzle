@@ -1,11 +1,11 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 
-import { supabase } from "../_lib/supabase.js"
-import * as http from "../_lib/http.js"
-import * as ip from "../_lib/ip.js"
-import * as rateLimit from "../_lib/rateLimit.js"
-import * as validation from "../_lib/validation.js"
-import { runReplay } from "../../src/engine/logic.js"
+import { supabase } from "../_lib/supabase"
+import * as http from "../_lib/http"
+import * as ip from "../_lib/ip"
+import * as rateLimit from "../_lib/rateLimit"
+import * as validation from "../_lib/validation"
+import { runReplay } from "../../src/engine/runReplay"
 
 // The following Postgres functions are required for this endpoint:
 //
@@ -141,7 +141,7 @@ export async function handler(req: VercelRequest, res: VercelResponse) {
 
 		// E) Read VERIFIED threshold (10th place)
 		const { threshold, count } = await getVerifiedThreshold10th()
-		console.log(`Submit: Verified threshold: ${threshold}, count: ${count}. Submitted score: ${scoreV.score}`)
+		console.log(`Submit: Verified threshold: ${threshold}, count: ${count}. Submitted score: ${scoreV.value}`)
 
 		// G) If score > threshold: verify replay
 		{
@@ -156,8 +156,8 @@ export async function handler(req: VercelRequest, res: VercelResponse) {
 		}
 
 		const replayResult = runReplay({
-			seed: replayV.replay.seed,
-			actions: replayV.replay.actions,
+			seed: replayV.value.seed,
+			actions: replayV.value.moves,
 			options: {
 				maxActions: validation.LIMITS.maxReplayActions,
 				maxDurationMs: validation.LIMITS.maxReplayDurationMs,
@@ -167,7 +167,7 @@ export async function handler(req: VercelRequest, res: VercelResponse) {
 		if (!replayResult.isValid) {
 			return http.errorJson(res, 400, "REPLAY_INVALID", "Replay verification failed", { reason: replayResult.reason })
 		}
-		if (replayResult.finalScore !== scoreV.score) {
+		if (replayResult.finalScore !== scoreV.value) {
 			return http.errorJson(res, 400, "SCORE_MISMATCH", "Submitted score does not match replay", {
 				computedScore: replayResult.finalScore,
 			})
@@ -176,7 +176,7 @@ export async function handler(req: VercelRequest, res: VercelResponse) {
 		// Insert into verified scores
 		const { data: entry, error: insertError } = await supabase
 			.from("scores")
-			.insert({ run_id: runId, name: nameV.name, score: scoreV.score })
+			.insert({ run_id: runId, name: nameV.value, score: scoreV.value })
 			.select()
 			.single()
 

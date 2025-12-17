@@ -1,6 +1,6 @@
-import * as ip from "./_lib/ip.js"
-import * as rateLimit from "./_lib/rateLimit.js"
-import * as validation from "./_lib/validation.js"
+import * as ip from "./_lib/ip"
+import * as rateLimit from "./_lib/rateLimit"
+import * as validation from "./_lib/validation"
 
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { errorJson, json } from "./_lib/http.js"
@@ -34,6 +34,14 @@ type LeaderboardResponse = {
 	verified: VerifiedEntry[]
 }
 
+
+type VerifiedScore = {
+	run_id: string
+	name: string
+	score: number
+	created_at: string
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
 	if (req.method !== "GET") {
 		console.log(`Leaderboard: Received ${req.method} request, expected GET.`)
@@ -63,6 +71,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 		}
 	}
 
+	const { limit: limitParam } = req.query
 	const limit = Math.max(1, Math.min(100, limitParam ? Number(limitParam) : 10))
 	console.log(`Leaderboard: limit=${limit}`)
 	if (!Number.isFinite(limit)) return errorJson(res, 400, "VALIDATION_ERROR", "limit must be a number")
@@ -81,7 +90,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
 	console.log("Leaderboard: Final 'verified' entries:", verified)
 
-	const formattedVerified: VerifiedEntry[] = (verified || []).map((v) => ({
+	const formattedVerified: VerifiedEntry[] = (verified || []).map((v: VerifiedScore) => ({
 		run_id: v.run_id,
 		name: v.name,
 		score: v.score,

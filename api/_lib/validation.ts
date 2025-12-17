@@ -1,4 +1,4 @@
-import { ReplayState } from "../../src/engine/replay.js"
+import { ReplayState } from "../../src/engine/replay"
 
 export const LIMITS = {
 	nameMinLength: 1,
@@ -46,8 +46,8 @@ export function validateReplay(replay: unknown): ValidationResult<ReplayState> {
 	if (typeof rs.seed !== "number" || !Number.isInteger(rs.seed)) {
 		return { ok: false, message: "Replay seed must be an integer." }
 	}
-	if (!Array.isArray(rs.actions)) {
-		return { ok: false, message: "Replay actions must be an array." }
+	if (!Array.isArray(rs.moves)) {
+		return { ok: false, message: "Replay moves must be an array." }
 	}
 	// Further deep validation of actions can be done in runReplay to avoid
 	// sending too much data over the network if it's already invalid.
