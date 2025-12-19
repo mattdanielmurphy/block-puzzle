@@ -114,6 +114,7 @@ class GameApp {
 	dragPos: { x: number; y: number } | null = null
 
 	ghostPos: { r: number; c: number } | null = null
+	hoveredShapeIndex: number | null = null
 
 	// Debug/testing flags
 	private readonly DEBUG_SPAWN_POWERUP_ON_START = false
@@ -161,8 +162,9 @@ class GameApp {
 
 	// Player Name UI elements
 	private playerNameInput: HTMLInputElement | null = null
-	private submitScoreBtn: HTMLButtonElement | null = null
 	private playerNameSubmissionContainer: HTMLDivElement | null = null
+	private playerNameMissingContainer: HTMLDivElement | null = null
+	private seeLeaderboardLink: HTMLAnchorElement | null = null
 	private playerNameDisplay: HTMLDivElement | null = null
 	private displayPlayerNameSpan: HTMLSpanElement | null = null
 
@@ -192,8 +194,9 @@ class GameApp {
 
 		// Get references to player name UI elements
 		this.playerNameInput = document.getElementById("player-name-input") as HTMLInputElement
-		this.submitScoreBtn = document.getElementById("submit-score-btn") as HTMLButtonElement
 		this.playerNameSubmissionContainer = document.getElementById("player-name-submission-container") as HTMLDivElement
+		this.playerNameMissingContainer = document.getElementById("player-name-missing-container") as HTMLDivElement
+		this.seeLeaderboardLink = document.getElementById("see-leaderboard-link") as HTMLAnchorElement
 		this.playerNameDisplay = document.getElementById("player-name-display") as HTMLDivElement
 		this.displayPlayerNameSpan = document.getElementById("display-player-name") as HTMLSpanElement
 
@@ -247,6 +250,7 @@ class GameApp {
 			onDragStart: this.onDragStart.bind(this),
 			onDragMove: this.onDragMove.bind(this),
 			onDragEnd: this.onDragEnd.bind(this),
+			onPointerMove: this.onPointerMove.bind(this),
 		})
 
 		this.loadHighScore()
@@ -317,7 +321,7 @@ class GameApp {
 		// Initial render
 		const initialPlaceability = this.engine.currentShapes.map((s) => (s ? this.engine.canPlaceShape(s) : false))
 		this.lastPlaceability = initialPlaceability // Init state
-		this.renderer.draw(this.engine, this.engine, null, null, null, initialPlaceability, Date.now(), this.handTimerRatio, this.timerPanic)
+		this.renderer.draw(this.engine, this.engine, null, null, null, initialPlaceability, this.hoveredShapeIndex, Date.now(), this.handTimerRatio, this.timerPanic)
 		this.positionTimerBars()
 
 		// Start Tutorial if not completed
@@ -394,17 +398,11 @@ class GameApp {
 	}
 
 	private updateSubmissionUI(state: "idle" | "submitting" | "success" | "error", message?: string) {
-		const submitBtn = document.getElementById("submit-score-btn") as HTMLButtonElement | null
 		const statusEl = document.getElementById("submission-status-message")
 		const rankingEl = document.getElementById("leaderboard-ranking")
 
-		if (!submitBtn) return
-
 		switch (state) {
 			case "idle":
-				submitBtn.disabled = false
-				submitBtn.textContent = "Submit Score"
-				submitBtn.classList.remove("hidden")
 				if (statusEl) {
 					statusEl.textContent = ""
 					statusEl.classList.add("hidden")
@@ -415,9 +413,6 @@ class GameApp {
 				}
 				break
 			case "submitting":
-				submitBtn.disabled = true
-				submitBtn.textContent = "Submitting..."
-				submitBtn.classList.add("hidden")
 				if (statusEl) {
 					statusEl.textContent = "Submitting score..."
 					statusEl.classList.remove("hidden")
@@ -428,9 +423,6 @@ class GameApp {
 				}
 				break
 			case "success":
-				submitBtn.disabled = true
-				submitBtn.textContent = "Score submitted!"
-				submitBtn.classList.add("hidden")
 				if (statusEl) {
 					statusEl.textContent = "Score submitted!"
 					statusEl.classList.remove("hidden")
@@ -438,10 +430,6 @@ class GameApp {
 				// ranking is populated asynchronously once leaderboard is fetched
 				break
 			case "error":
-				// Allow player to try again if submission failed
-				submitBtn.disabled = false
-				submitBtn.textContent = "Submit Score"
-				submitBtn.classList.remove("hidden")
 				if (statusEl) {
 					statusEl.textContent = message || "Failed to submit score. You can try submitting again."
 					statusEl.classList.remove("hidden")
@@ -467,16 +455,25 @@ class GameApp {
 			this.togglePause()
 		})
 
-		document.getElementById("submit-score-btn")?.addEventListener("click", () => {
-			this.attemptScoreSubmission(true)
+		this.seeLeaderboardLink?.addEventListener("click", (e) => {
+			e.preventDefault()
+			this.openLeaderboard()
 		})
+
 		// New event listener for player name input
 		this.playerNameInput?.addEventListener("input", () => {
-			if (this.submitScoreBtn && this.playerNameInput) {
+			if (this.playerNameInput) {
 				const playerName = this.playerNameInput.value.trim()
-				this.submitScoreBtn.disabled = playerName === ""
 				// Save player name to localStorage immediately
 				localStorage.setItem("bp_player_name", playerName)
+
+				// If on game over screen and we just got a name, try to submit
+				if (this.engine.isGameOver && !this.scoreSubmitted && playerName !== "") {
+					this.playerNameMissingContainer?.classList.add("hidden")
+					// Re-check PB and submit
+					const contextPromise = this.fetchContextualLeaderboard(this.engine.score)
+					this.checkPBAndSubmit(this.engine.score, playerName, contextPromise)
+				}
 			}
 		})
 
@@ -571,7 +568,6 @@ class GameApp {
 				localStorage.setItem("bp_chill_mode", this.chillMode.toString())
 				this.engine.chillMode = this.chillMode
 				this.restart()
-				this.settingsModal.hide() // Close settings to show the fresh game
 			})
 		}
 
@@ -668,6 +664,8 @@ class GameApp {
 		document.getElementById("mini-leaderboard-container")?.classList.add("hidden")
 		document.getElementById("highscore-notification")?.classList.add("hidden")
 		document.getElementById("game-over-highscore-label")?.classList.add("hidden")
+		document.getElementById("submission-status-message")?.classList.add("hidden")
+		this.playerNameMissingContainer?.classList.add("hidden")
 
 		// Set prior best score to current best for the new session
 		this.priorBestScore = this.engine.bestScore
@@ -777,8 +775,8 @@ class GameApp {
 		}
 	}
 
-	private async attemptScoreSubmission(manualSubmit: boolean = false): Promise<void> {
-		console.log(`[attemptScoreSubmission] manualSubmit: ${manualSubmit}, scoreSubmitted: ${this.scoreSubmitted}`)
+	private async attemptScoreSubmission(): Promise<void> {
+		console.log(`[attemptScoreSubmission] scoreSubmitted: ${this.scoreSubmitted}`)
 		if (this.scoreSubmitted) {
 			this.updateSubmissionUI("success")
 			return
@@ -788,11 +786,9 @@ class GameApp {
 		}
 
 		// Ensure we have a player name before proceeding.
-		// If the submission button was clicked, the name should already be in localStorage or input.
 		const playerName = localStorage.getItem("bp_player_name")
 		if (!playerName || playerName.trim() === "") {
 			console.error("No player name found. Aborting score submission.")
-			// Re-enable submission UI in case of an unexpected state
 			this.updateSubmissionUI("idle", "Please enter a player name before submitting.")
 			return
 		}
@@ -800,30 +796,7 @@ class GameApp {
 		// Update UI immediately to provide feedback
 		this.updateSubmissionUI("submitting")
 
-		const currentScore = this.engine.score
-
-		// 1. Fetch current leaderboard scores
-		const leaderboard = await this.fetchLeaderboardScores()
-
-		// 2. Determine if the current score is within the top 20
-		const TOP_N = 20
-		let shouldSubmit = false
-		if (leaderboard.length < TOP_N) {
-			shouldSubmit = true // Always submit if leaderboard isn't full yet
-		} else {
-			// Check if current score is greater than the 20th score
-			const twentyFourthScore = leaderboard[TOP_N - 1]?.score ?? 0 // Get the 20th score (0-indexed)
-			if (currentScore > twentyFourthScore) {
-				shouldSubmit = true
-			}
-		}
-
-		if (!shouldSubmit && !manualSubmit) {
-			this.updateSubmissionUI("idle", `Score ${currentScore} is not in the top ${TOP_N}.`)
-			return // Do not proceed with submission
-		}
-
-		this.submitScoreToLeaderboard(playerName.trim(), manualSubmit)
+		this.submitScoreToLeaderboard(playerName.trim(), true)
 	}
 
 	// --- LEADERBOARD INTEGRATION ---
@@ -1019,6 +992,12 @@ class GameApp {
 				this.saveGameState() // Save state with scoreSubmitted: true
 
 				if (data && typeof data === "object") {
+					if (data.status === "NOT_PERSONAL_BEST") {
+						this.updateSubmissionUI("idle", "Not a personal best. Score not saved to leaderboard.")
+						// We still mark it as "submitted" for this run so we don't keep trying
+						return
+					}
+
 					const entry = (data as any).entry
 					if (entry && typeof entry === "object") {
 						this.lastSubmittedEntry = {
@@ -1081,36 +1060,32 @@ class GameApp {
 		console.log("[updatePlayerNameUI] Function called.")
 		const playerName = localStorage.getItem("bp_player_name")
 
-		// Ensure playerNameSubmissionContainer is always visible as it contains the submit button
+		// Ensure playerNameSubmissionContainer is always visible as it contains the input
 		if (this.playerNameSubmissionContainer) {
 			this.playerNameSubmissionContainer.classList.remove("hidden")
 		}
 
 		if (playerName && playerName.trim() !== "") {
-			// Name is set: show display, hide input, pre-fill input (for potential future edit), enable submit button
+			// Name is set: show display, hide input, pre-fill input
 			this.playerNameDisplay?.classList.remove("hidden")
 			if (this.displayPlayerNameSpan) {
 				this.displayPlayerNameSpan.textContent = playerName
 			}
 			if (this.playerNameInput) {
-				this.playerNameInput.classList.add("hidden") // Hide the input field
-				this.playerNameInput.value = playerName // Keep value updated
+				this.playerNameInput.classList.remove("hidden") // Keep input visible so they can change it if they want?
+				// The prompt says "if the player hasn't set their name...".
+				// If they HAVE set it, we just show the input with their name.
+				this.playerNameInput.value = playerName
 			}
-			if (this.submitScoreBtn) {
-				console.log("[updatePlayerNameUI] Player name exists. Enabling submit button.")
-				this.submitScoreBtn.disabled = false
-			}
+			this.playerNameMissingContainer?.classList.add("hidden")
 		} else {
-			// No name: hide display, show input, clear input, disable submit button
+			// No name: show input, clear input
 			this.playerNameDisplay?.classList.add("hidden")
 			if (this.playerNameInput) {
-				this.playerNameInput.classList.remove("hidden") // Show the input field
-				this.playerNameInput.value = "" // Clear input on game over if no name was set
+				this.playerNameInput.classList.remove("hidden")
+				this.playerNameInput.value = ""
 			}
-			if (this.submitScoreBtn) {
-				console.log("[updatePlayerNameUI] No player name. Disabling submit button.")
-				this.submitScoreBtn.disabled = true
-			}
+			this.playerNameMissingContainer?.classList.remove("hidden")
 		}
 	}
 
@@ -1146,102 +1121,101 @@ class GameApp {
 				}
 				document.getElementById("final-score")!.textContent = this.engine.score.toString()
 
-				                // Start fetching contextual leaderboard in parallel
-				                this.contextualLeaderboardData = null
-				                const contextPromise = this.fetchContextualLeaderboard(this.engine.score)
-				
-				                // Show High Score Label if we beat the prior best
-				                const highscoreLabel = document.getElementById("game-over-highscore-label")
-				                if (highscoreLabel) {
-				                    if (this.engine.score > this.priorBestScore) {
-				                        highscoreLabel.classList.remove("hidden")
-				                    } else {
-				                        highscoreLabel.classList.add("hidden")
-				                    }
-				                }
-				
-				                // Display a random quote
-				                const quoteElement = document.getElementById("game-over-quote")
-				                let quoteLength = 0
-				                if (quoteElement) {
-				                    const quote = this.getRandomUnusedQuote()
-				                    quoteElement.textContent = quote
-				                    quoteLength = quote.length
-				                }
-				
-				                // Initial state: hide everything except header, score, and quote
-				                const gameOverActions = document.getElementById("game-over-actions")
-				                const submissionContainer = document.getElementById("player-name-submission-container")
-				                const submissionActions = document.getElementById("game-over-submission-actions")
-				                const miniLeaderboard = document.getElementById("mini-leaderboard-container")
-				                const statusContainer = document.getElementById("leaderboard-status-container")
-				
-				                if (gameOverActions) gameOverActions.classList.add("hidden")
-				                if (submissionContainer) submissionContainer.classList.add("hidden")
-				                if (submissionActions) submissionActions.classList.add("hidden")
-				                if (miniLeaderboard) miniLeaderboard.classList.add("hidden")
-				                if (statusContainer) statusContainer.classList.add("hidden")
-				
-				                				if (this.gameOverActionsTimeout) clearTimeout(this.gameOverActionsTimeout)
-				                
-				                				// Delay based on reading time: .5s base + 10ms per character
-				                				const delay = Math.min(2000, 500 + quoteLength * 10)
-				                
-				                				// Handle leaderboard and submission logic in parallel
-				                				const playerName = localStorage.getItem("bp_player_name")
-				                				const currentScore = this.engine.score
-				                
-				                				// Reveal buttons exactly after delay
-				                				this.gameOverActionsTimeout = setTimeout(() => {
-				                					if (gameOverActions) gameOverActions.classList.remove("hidden")
-				                
-				                					if (currentScore > 0 && !this.scoreSubmitted) {
-				                						if (submissionContainer) submissionContainer.classList.remove("hidden")
-				                						if (submissionActions) submissionActions.classList.remove("hidden")
-				                					} else if (currentScore > 0 && this.scoreSubmitted) {
-				                						this.fetchAndRenderMiniLeaderboard()
-				                					}
-				                				}, delay)
-				                
-				                				if (currentScore > 0 && !this.scoreSubmitted) {
-				                					this.checkTop20AndNotify(currentScore, playerName, contextPromise)
-				                				}
-				                			}
-				                		}		if (this.engine.isGameOver) {
+				// Start fetching contextual leaderboard in parallel
+				this.contextualLeaderboardData = null
+				const contextPromise = this.fetchContextualLeaderboard(this.engine.score)
+
+				// Show High Score Label if we beat the prior best
+				const highscoreLabel = document.getElementById("game-over-highscore-label")
+				if (highscoreLabel) {
+					if (this.engine.score > this.priorBestScore) {
+						highscoreLabel.classList.remove("hidden")
+					} else {
+						highscoreLabel.classList.add("hidden")
+					}
+				}
+
+				// Display a random quote
+				const quoteElement = document.getElementById("game-over-quote")
+				let quoteLength = 0
+				if (quoteElement) {
+					const quote = this.getRandomUnusedQuote()
+					quoteElement.textContent = quote
+					quoteLength = quote.length
+				}
+
+				// Initial state: hide everything except header, score, and quote
+				const gameOverActions = document.getElementById("game-over-actions")
+				const submissionContainer = document.getElementById("player-name-submission-container")
+				const miniLeaderboard = document.getElementById("mini-leaderboard-container")
+				const statusContainer = document.getElementById("leaderboard-status-container")
+				const nameMissingContainer = this.playerNameMissingContainer
+
+				if (gameOverActions) gameOverActions.classList.add("hidden")
+				if (submissionContainer) submissionContainer.classList.add("hidden")
+				if (miniLeaderboard) miniLeaderboard.classList.add("hidden")
+				if (statusContainer) statusContainer.classList.add("hidden")
+				if (nameMissingContainer) nameMissingContainer.classList.add("hidden")
+
+				if (this.gameOverActionsTimeout) clearTimeout(this.gameOverActionsTimeout)
+
+				// Delay based on reading time: .5s base + 10ms per character
+				const delay = Math.min(2000, 500 + quoteLength * 10)
+
+				// Handle leaderboard and submission logic in parallel
+				const playerName = localStorage.getItem("bp_player_name")
+				const currentScore = this.engine.score
+
+				// Reveal buttons exactly after delay
+				this.gameOverActionsTimeout = setTimeout(() => {
+					if (gameOverActions) gameOverActions.classList.remove("hidden")
+
+					if (currentScore > 0 && !this.scoreSubmitted) {
+						if (submissionContainer) submissionContainer.classList.remove("hidden")
+						if (!playerName || playerName.trim() === "") {
+							if (nameMissingContainer) nameMissingContainer.classList.remove("hidden")
+						}
+					} else if (currentScore > 0 && this.scoreSubmitted) {
+						this.fetchAndRenderMiniLeaderboard()
+					}
+				}, delay)
+
+				if (currentScore > 0 && !this.scoreSubmitted) {
+					this.checkPBAndSubmit(currentScore, playerName, contextPromise)
+				}
+			}
+		}
+		if (this.engine.isGameOver) {
 			this.updateCountdownUI(null)
 		}
 	}
 
-	private async checkTop20AndNotify(score: number, playerName: string | null, contextPromise: Promise<any>) {
+	private async checkPBAndSubmit(score: number, playerName: string | null, contextPromise: Promise<any>) {
 		if (this.scoreSubmitted) return
 
-		const statusContainer = document.getElementById("leaderboard-status-container")
-		const statusText = document.getElementById("leaderboard-status-text")
 		const miniStatusText = document.getElementById("mini-leaderboard-status")
 
 		try {
 			// Wait for the contextual data (already fetching in parallel)
 			const context = await contextPromise
-			const isTop20 = context && context.playerRank <= 20
+			const isPB = context && context.isPersonalBest
 
-			if (isTop20) {
+			if (isPB) {
 				if (playerName && playerName.trim() !== "") {
-					if (miniStatusText) miniStatusText.textContent = "Score was autosubmitted because it's in the top 20!"
+					if (miniStatusText) miniStatusText.textContent = "New personal best! Score was auto-submitted."
 					// Autosubmit and show the mini-leaderboard when done
-					this.attemptScoreSubmission(true)
-				} else {
-					if (statusContainer) statusContainer.classList.remove("hidden")
-					if (statusText) statusText.textContent = "You should submit your score! Your score ranks among the top 20 on the leaderboard! Type in your name and hit Submit Score."
+					this.attemptScoreSubmission()
 				}
 			}
 		} catch (e) {
-			console.error("Failed to check top 20 status:", e)
+			console.error("Failed to check personal best status:", e)
 		}
 	}
 
 	private async fetchContextualLeaderboard(score: number): Promise<any> {
 		try {
-			const data = await this.fetchContextualLeaderboardScores(score)
+			const playerName = localStorage.getItem("bp_player_name")
+			const data = await this.fetchContextualLeaderboardScores(score, playerName)
 			this.contextualLeaderboardData = data
 			return data
 		} catch (e) {
@@ -1250,9 +1224,13 @@ class GameApp {
 		}
 	}
 
-	private async fetchContextualLeaderboardScores(score: number): Promise<any> {
+	private async fetchContextualLeaderboardScores(score: number, name: string | null): Promise<any> {
 		const mode = this.chillMode ? "chill" : "normal"
-		const resp = await fetch(`/api/leaderboard/context?score=${score}&mode=${mode}`)
+		let url = `/api/leaderboard/context?score=${score}&mode=${mode}`
+		if (name) {
+			url += `&name=${encodeURIComponent(name)}`
+		}
+		const resp = await fetch(url)
 		if (!resp.ok) throw new Error("Failed to fetch contextual leaderboard")
 		return await resp.json()
 	}
@@ -1472,6 +1450,27 @@ class GameApp {
 		if (this.engine.isGameOver) return
 		if (this.isPaused) this.resumeGame()
 		else this.pauseGame()
+	}
+
+	onPointerMove(x: number, y: number) {
+		if (this.engine.isGameOver || this.isPaused) {
+			this.canvas.style.cursor = ""
+			this.hoveredShapeIndex = null
+			return
+		}
+
+		const { trayRect } = this.renderer.layout
+		if (y >= trayRect.y) {
+			const slotW = trayRect.w / 3
+			const index = Math.floor(x / slotW)
+			if (index >= 0 && index < 3 && this.engine.currentShapes[index]) {
+				this.canvas.style.cursor = "var(--custom-cursor-hover)"
+				this.hoveredShapeIndex = index
+				return
+			}
+		}
+		this.canvas.style.cursor = ""
+		this.hoveredShapeIndex = null
 	}
 
 	onDragStart(index: number) {
@@ -1709,7 +1708,7 @@ class GameApp {
 		const ghostPos = this.ghostPos
 
 		const handRatio = this.handTimerRatio
-		this.renderer.draw(activeEngine, activeEngine, dragShape, dragPos, ghostPos, placeability, now, handRatio, this.timerPanic)
+		this.renderer.draw(activeEngine, activeEngine, dragShape, dragPos, ghostPos, placeability, this.hoveredShapeIndex, now, handRatio, this.timerPanic)
 
 		requestAnimationFrame(this.loop.bind(this))
 	}

@@ -103,6 +103,7 @@ export class GameRenderer {
 		dragPos: { x: number; y: number } | null,
 		ghostPos: { r: number; c: number } | null,
 		placeability: boolean[] | null,
+		hoveredIndex: number | null = null,
 		currentTime: number = Date.now(),
 		handTimerRatio: number | null = null,
 		handTimerPanic: boolean = false
@@ -120,7 +121,7 @@ export class GameRenderer {
 		if (handTimerRatio !== null) {
 			this.drawHandTimers(handTimerRatio, handTimerPanic)
 		}
-		this.drawTray(state.currentShapes, dragShape, state.currentShapes.indexOf(dragShape), placeability)
+		this.drawTray(state.currentShapes, dragShape, state.currentShapes.indexOf(dragShape), placeability, hoveredIndex)
 
 		if (dragShape && dragPos) {
 			this.drawShapeAtPixels(dragShape, dragPos.x, dragPos.y, this.layout.boardRect.cellSize * 1.0)
@@ -257,9 +258,9 @@ export class GameRenderer {
 		})
 	}
 
-	drawTray(shapes: (Shape | null)[], draggingShape: Shape | null, draggingIndex: number, placeability: boolean[] | null) {
+	drawTray(shapes: (Shape | null)[], draggingShape: Shape | null, draggingIndex: number, placeability: boolean[] | null, hoveredIndex: number | null = null) {
 		const { shapecenters } = this.layout.trayRect
-		const cellSize = this.layout.boardRect.cellSize * 0.6 // Smaller in tray
+		const baseCellSize = this.layout.boardRect.cellSize * 0.6 // Smaller in tray
 
 		shapes.forEach((shape, i) => {
 			if (shape && shape !== draggingShape) {
@@ -269,15 +270,26 @@ export class GameRenderer {
 				const isPlaceable = placeability ? placeability[i] : true
 				this.ctx.globalAlpha = isPlaceable ? 1.0 : 0.3
 
+				let cellSize = baseCellSize
+				if (i === hoveredIndex && isPlaceable) {
+					// Scale up slightly on hover
+					cellSize *= 1.1
+					// Add a glow/lighten effect
+					this.ctx.shadowColor = "rgba(126, 224, 244, 0.5)"
+					this.ctx.shadowBlur = 15
+				}
+
 				// Center the shape
-				this.drawShapeCentered(shape, center.x, center.y, cellSize)
+				const isHighlighted = i === hoveredIndex && isPlaceable
+				this.drawShapeCentered(shape, center.x, center.y, cellSize, isHighlighted)
 
 				this.ctx.globalAlpha = 1.0
+				this.ctx.shadowBlur = 0
 			}
 		})
 	}
 
-	drawShapeCentered(shape: Shape, cx: number, cy: number, cellSize: number) {
+	drawShapeCentered(shape: Shape, cx: number, cy: number, cellSize: number, highlight: boolean = false) {
 		const gap = THEME.metrics.cellGap
 		// Calculate bounds of shape to center it
 		let minR = 10,
@@ -297,7 +309,12 @@ export class GameRenderer {
 		const startX = cx - width / 2
 		const startY = cy - height / 2
 
+		this.ctx.save()
 		this.ctx.fillStyle = THEME.colors.shapes[shape.colorId]
+		if (highlight) {
+			// Clean brightness boost using filter
+			this.ctx.filter = "brightness(1.4) saturate(1.1)"
+		}
 
 		shape.cells.forEach((p) => {
 			const px = startX + (p.c - minC) * (cellSize + gap)
@@ -305,6 +322,7 @@ export class GameRenderer {
 			this.roundRect(px, py, cellSize, cellSize, THEME.metrics.borderRadius)
 			this.ctx.fill()
 		})
+		this.ctx.restore()
 	}
 
 	drawShapeAtPixels(shape: Shape, x: number, y: number, cellSize: number) {

@@ -62,17 +62,15 @@
 					<div id="leaderboard-status-container" class="hidden">
 						<p id="leaderboard-status-text"></p>
 					</div>
+
+					<div id="player-name-missing-container" class="hidden">
+						<p>If you've played before, please choose the name you chose before. <a href="#" id="see-leaderboard-link">See Leaderboard</a></p>
+					</div>
+
 					<div id="player-name-submission-container">
 						<input type="text" id="player-name-input" placeholder="Enter your name" />
 					</div>
-					<!-- <div id="player-name-display" class="hidden">
-						<p>Player: <span id="display-player-name"></span></p>
-					</div> -->
-					<div id="game-over-submission-actions">
-						<button id="submit-score-btn" class="secondary-btn" disabled>Submit Score</button>
-					</div>
 					<div id="submission-status-message" class="hidden"></div>
-					<!-- <div id="leaderboard-ranking" class="hidden"></div> -->
 					<div id="game-over-actions">
 						<div id="post-submission-actions">
 							<button id="restart-btn" class="primary-btn">Try Again</button>
@@ -90,12 +88,15 @@
 							<label for="sensitivity-slider">Sensitivity: <span id="sensitivity-value">1.0</span></label>
 							<input type="range" id="sensitivity-slider" min="1.0" max="3.0" step="0.1" value="1.0" />
 						</div>
-						<div class="setting-item" style="display: flex; justify-content: space-between; align-items: center">
+						<div class="setting-item horizontal">
 							<label for="chill-mode-toggle">Chill Mode (No Timer)</label>
-							<input type="checkbox" id="chill-mode-toggle" />
+							<label class="switch">
+								<input type="checkbox" id="chill-mode-toggle" />
+								<span class="slider"></span>
+							</label>
 						</div>
 						<div class="setting-item" style="margin-top: 20px; border-top: 1px solid #333; padding-top: 15px">
-							<button id="clear-cache-btn" class="secondary-btn" style="width: 100%; border: 1px solid #ff4444; color: #ff4444">Clear Cache & Reload</button>
+							<button id="clear-cache-btn" class="secondary-btn" style="border: 1px solid #ff4444; color: #ff4444">Clear Cache & Reload</button>
 						</div>
 						<button id="close-settings-btn">Close</button>
 					</div>

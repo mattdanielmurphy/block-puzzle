@@ -33,8 +33,9 @@ type SubmitBody = {
 type SubmitResponse = {
 	ok: true
 
-	status: "ACCEPTED"
-	entry: { name: string; score: number; createdAt: string }
+	status: "ACCEPTED" | "NOT_PERSONAL_BEST"
+	entry?: { name: string; score: number; createdAt: string }
+	message?: string
 }
 
 async function parseJsonBody(req: VercelRequest): Promise<SubmitBody | null> {
@@ -106,6 +107,26 @@ export async function handler(req: VercelRequest, res: VercelResponse) {
 		const mode = typeof body.mode === "string" ? body.mode : "normal"
 		const table = mode === "chill" ? "chill_scores" : "scores"
 		const trimFunction = mode === "chill" ? "trim_chill_scores" : "trim_verified_scores"
+
+		// E2) Check if a better score already exists for this name
+		const { data: existingEntry } = await supabase
+			.from(table)
+			.select("score")
+			.eq("name", nameV.value)
+			.order("score", { ascending: false })
+			.limit(1)
+			.single()
+
+		if (existingEntry && existingEntry.score >= scoreV.value) {
+			return http.json(res, 200, {
+				ok: true,
+				status: "NOT_PERSONAL_BEST",
+				message: "A better or equal score already exists for this name.",
+			})
+		}
+
+		// E3) Delete any previous scores for this name (to keep only one per player)
+		await supabase.from(table).delete().eq("name", nameV.value)
 
 		// F) Insert score directly (no verification)
 		const { data: entry, error: insertError } = await supabase

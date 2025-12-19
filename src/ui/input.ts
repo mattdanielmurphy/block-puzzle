@@ -18,6 +18,7 @@ export type InputEvents = {
 	onDragStart: (shapeIndex: number) => void
 	onDragMove: (x: number, y: number) => void
 	onDragEnd: (r: number, c: number) => void // r,c is board coord or -1,-1
+	onPointerMove?: (x: number, y: number) => void
 }
 
 export class InputManager {
@@ -102,12 +103,16 @@ export class InputManager {
 	}
 
 	private onPointerMove(e: PointerEvent) {
-		if (!this.dragState) return
-		e.preventDefault()
-
 		const { left, top } = this.canvas.getBoundingClientRect()
 		const x = e.clientX - left
 		const y = e.clientY - top
+
+		if (this.events.onPointerMove) {
+			this.events.onPointerMove(x, y)
+		}
+
+		if (!this.dragState) return
+		e.preventDefault()
 
 		this.dragState.currentX = x
 		this.dragState.currentY = y

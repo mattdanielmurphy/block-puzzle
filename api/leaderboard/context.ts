@@ -14,6 +14,7 @@ type ContextualLeaderboardResponse = {
 	topScore: VerifiedEntry | null
 	playerRank: number
 	surrounding: VerifiedEntry[]
+	isPersonalBest: boolean
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -36,8 +37,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 		return errorJson(res, 429, "RATE_LIMITED", "Too many requests")
 	}
 
-	const { score: scoreParam, mode: modeParam } = req.query
+	const { score: scoreParam, mode: modeParam, name: nameParam } = req.query
 	const playerScore = scoreParam ? Number(scoreParam) : null
+	const playerName = typeof nameParam === "string" ? nameParam : null
 	const mode = typeof modeParam === "string" ? modeParam : "normal"
 	const table = mode === "chill" ? "chill_scores" : "scores"
 
@@ -53,7 +55,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 		const topScore = topData ? { ...topData, rank: 1 } : null
 
 		if (playerScore === null) {
-			return json(res, 200, { ok: true, topScore, playerRank: 0, surrounding: [] })
+			return json(res, 200, { ok: true, topScore, playerRank: 0, surrounding: [], isPersonalBest: false })
 		}
 
 		// 2. Get Player Rank
@@ -64,7 +66,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
 		const playerRank = (higherCount ?? 0) + 1
 
-		// 3. Get surrounding (1 above, 1 below)
+		// 3. Check Personal Best
+		let isPersonalBest = true
+		if (playerName) {
+			const { data: existingScoreData } = await supabase
+				.from(table)
+				.select("score")
+				.eq("name", playerName)
+				.order("score", { ascending: false })
+				.limit(1)
+				.single()
+
+			if (existingScoreData && existingScoreData.score >= playerScore) {
+				isPersonalBest = false
+			}
+		}
+
+		// 4. Get surrounding (1 above, 1 below)
 		// Above
 		const { data: aboveData } = await supabase
 			.from(table)
@@ -96,6 +114,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 			topScore,
 			playerRank,
 			surrounding: surrounding.sort((a, b) => a.rank - b.rank),
+			isPersonalBest,
 		}
 		return json(res, 200, resp)
 	} catch (e) {
