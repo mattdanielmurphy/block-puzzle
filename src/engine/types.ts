@@ -53,6 +53,7 @@ export interface SavedEngineState {
 	powerupManagerState: SavedPowerupState
 	rngState: number
 	lastMoveTime: number
+	chillMode: boolean
 }
 
 export interface SavedAppState {
@@ -65,6 +66,7 @@ export interface SavedAppState {
 	timestamp: number // Time of save
 	priorBestScore?: number
 	highScoreNotificationShown?: boolean
-	runId: string // Add runId to saved state
+	runId: string
+	scoreSubmitted?: boolean
 	chillMode?: boolean
 }

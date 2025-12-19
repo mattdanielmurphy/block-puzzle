@@ -35,4 +35,4 @@
 - **Hand Timer**: A per-hand countdown timer that resets when a new hand is dealt. It starts at 10 seconds and progressively quickens to a minimum of 8 seconds (100ms faster per hand). If the timer runs out, the game ends.
 - **Powerups (Bombs)**: Bombs are time-based spawns managed by `PowerupManager`. They only spawn when the game is active (after the first piece is placed, the timer has started, and before game over/pause/tutorial).
 - **Modal Component**: Reusable `Modal` class in `src/ui/modal.ts` handles overlays (Settings, Leaderboard, Game Over, Pause). Supports Esc key and outside-click dismissal.
-- **Leaderboard Auto-Submission**: The game automatically checks if a score is in the top 20 at game over. If so, it notifies the user and either autosubmits (if a name is provided) or prompts for a name submission.
+- **Leaderboard Auto-Submission**: The game automatically checks if a score is in the top 20 at game over. If so, it notifies the user and either autosubmits (if a name is provided) or prompts for a name submission. During submission, the button is hidden and a status message is shown to provide immediate feedback.

@@ -19,6 +19,7 @@ export class GameEngine {
 			powerupManagerState: this.powerupManager.serialize(),
 			rngState: this.rng.getState(),
 			lastMoveTime: this.lastMoveTime,
+			chillMode: this.chillMode,
 		}
 	}
 
@@ -36,6 +37,7 @@ export class GameEngine {
 			this.rng.setState(state.rngState)
 		}
 		this.lastMoveTime = state.lastMoveTime || Date.now()
+		this.chillMode = state.chillMode || false
 	}
 
 	shiftTime(deltaMs: number) {
@@ -64,6 +66,7 @@ export class GameEngine {
 	powerupManager: PowerupManager
 	lastUpdateTime: number = Date.now()
 	lastMoveTime: number = Date.now()
+	chillMode: boolean = false
 
 	constructor(seed: number = Date.now()) {
 		this.grid = new Array(GRID_SIZE * GRID_SIZE).fill(0)
@@ -299,7 +302,7 @@ export class GameEngine {
 		}
 
 		// Chance to spawn a powerup after a successful placement (post-clear so it lands on empty cells)
-		this.powerupManager.onPlacement(timestamp, this.grid)
+		this.powerupManager.onPlacement(timestamp, this.grid, this.chillMode)
 
 		// 6. Refill if empty
 		if (this.currentShapes.every((s) => s === null)) {
@@ -382,7 +385,7 @@ export class GameEngine {
 	update(currentTime: number = Date.now(), isActive: boolean = true) {
 		this.lastUpdateTime = currentTime
 		if (isActive) {
-			this.powerupManager.update(currentTime, this.grid)
+			this.powerupManager.update(currentTime, this.grid, this.chillMode)
 		}
 	}
 

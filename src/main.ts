@@ -1,15 +1,15 @@
-import { inject } from "@vercel/analytics"
 import { BlockClearEffect, FloatingTextEffect } from "./ui/effects"
 import { GRID_SIZE, SavedAppState, Shape } from "./engine/types"
 
 import { GameEngine } from "./engine/logic"
 import { GameRenderer } from "./ui/renderer"
 import { InputManager } from "./ui/input"
+import { Modal } from "./ui/modal"
 import { PowerupType } from "./engine/powerups"
 import { THEME } from "./ui/theme"
 import { TutorialManager } from "./ui/tutorial"
 import { VERSION } from "./version"
-import { Modal } from "./ui/modal"
+import { inject } from "@vercel/analytics"
 
 const GAME_OVER_QUOTES = [
 	"A valiant effort.",
@@ -154,8 +154,8 @@ class GameApp {
 	// Device Detection
 	private isMobile: boolean = false
 	private gameOverActionsTimeout: any = null
-	private runId: string | null = null
 	private gameSeed: number | null = null
+	private runId: string | null = null
 	private scoreSubmitted: boolean = false // Flag to prevent duplicate submissions
 	private runInitialized: boolean = false // Prevent timer/start logic before the real run begins
 
@@ -249,8 +249,6 @@ class GameApp {
 		})
 
 		this.loadHighScore()
-		this.updateUI()
-		this.updatePlayerNameUI() // Call here to set initial state of player name input/display
 
 		this.leaderboardModal = new Modal("leaderboard-modal", {
 			onShow: () => this.pauseGame(),
@@ -337,6 +335,9 @@ class GameApp {
 			}
 			this.syncHandCountdown(Date.now())
 		}
+
+		this.updateUI()
+		this.updatePlayerNameUI()
 	}
 
 	displayVersion() {
@@ -402,6 +403,7 @@ class GameApp {
 			case "idle":
 				submitBtn.disabled = false
 				submitBtn.textContent = "Submit Score"
+				submitBtn.classList.remove("hidden")
 				if (statusEl) {
 					statusEl.textContent = ""
 					statusEl.classList.add("hidden")
@@ -414,9 +416,10 @@ class GameApp {
 			case "submitting":
 				submitBtn.disabled = true
 				submitBtn.textContent = "Submitting..."
+				submitBtn.classList.add("hidden")
 				if (statusEl) {
-					statusEl.textContent = ""
-					statusEl.classList.add("hidden")
+					statusEl.textContent = "Submitting score..."
+					statusEl.classList.remove("hidden")
 				}
 				if (rankingEl) {
 					rankingEl.textContent = ""
@@ -426,18 +429,20 @@ class GameApp {
 			case "success":
 				submitBtn.disabled = true
 				submitBtn.textContent = "Score submitted!"
+				submitBtn.classList.add("hidden")
 				if (statusEl) {
-					statusEl.textContent = ""
-					statusEl.classList.add("hidden")
+					statusEl.textContent = "Score submitted!"
+					statusEl.classList.remove("hidden")
 				}
 				// ranking is populated asynchronously once leaderboard is fetched
 				break
 			case "error":
-				// Allow player to start a new run even if submission failed
-				submitBtn.disabled = true
+				// Allow player to try again if submission failed
+				submitBtn.disabled = false
 				submitBtn.textContent = "Submit Score"
+				submitBtn.classList.remove("hidden")
 				if (statusEl) {
-					statusEl.textContent = message || "Failed to submit score. You can start a new run and try again."
+					statusEl.textContent = message || "Failed to submit score. You can try submitting again."
 					statusEl.classList.remove("hidden")
 				}
 				if (rankingEl) {
@@ -462,7 +467,7 @@ class GameApp {
 		})
 
 		document.getElementById("submit-score-btn")?.addEventListener("click", () => {
-			this.attemptScoreSubmission()
+			this.attemptScoreSubmission(true)
 		})
 		// New event listener for player name input
 		this.playerNameInput?.addEventListener("input", () => {
@@ -559,6 +564,7 @@ class GameApp {
 			chillToggle.addEventListener("change", (e) => {
 				this.chillMode = (e.target as HTMLInputElement).checked
 				localStorage.setItem("bp_chill_mode", this.chillMode.toString())
+				this.engine.chillMode = this.chillMode
 				this.restart()
 				this.settingsModal.hide() // Close settings to show the fresh game
 			})
@@ -704,6 +710,7 @@ class GameApp {
 			priorBestScore: this.priorBestScore,
 			highScoreNotificationShown: this.highScoreNotificationShown,
 			runId: this.runId!, // Save the current runId (assert non-null)
+			scoreSubmitted: this.scoreSubmitted,
 			chillMode: this.chillMode,
 		}
 
@@ -733,7 +740,17 @@ class GameApp {
 			this.priorBestScore = state.priorBestScore ?? this.engine.bestScore
 			this.highScoreNotificationShown = state.highScoreNotificationShown ?? false
 			this.runId = state.runId // Restore runId from saved state
+
+			// Restore scoreSubmitted from state OR check localStorage for redundancy
+			this.scoreSubmitted = state.scoreSubmitted ?? false
+			if (!this.scoreSubmitted && this.runId && localStorage.getItem(`bp_submitted_run_${this.runId}`)) {
+				this.scoreSubmitted = true
+			}
+
+			console.log(`[loadGameState] runId: ${this.runId}, scoreSubmitted: ${this.scoreSubmitted}`)
+
 			this.chillMode = state.chillMode ?? false
+			this.engine.chillMode = this.chillMode
 
 			// If checking paused state, ensure UI reflects it
 			if (this.isPaused) {
@@ -755,8 +772,12 @@ class GameApp {
 	}
 
 	private async attemptScoreSubmission(manualSubmit: boolean = false): Promise<void> {
-		if (this.scoreSubmitted || this.engine.score <= 0) {
-			console.warn("Attempted to submit score but either already submitted or score is 0. Aborting.")
+		console.log(`[attemptScoreSubmission] manualSubmit: ${manualSubmit}, scoreSubmitted: ${this.scoreSubmitted}`)
+		if (this.scoreSubmitted) {
+			this.updateSubmissionUI("success")
+			return
+		}
+		if (this.engine.score <= 0) {
 			return
 		}
 
@@ -769,6 +790,9 @@ class GameApp {
 			this.updateSubmissionUI("idle", "Please enter a player name before submitting.")
 			return
 		}
+
+		// Update UI immediately to provide feedback
+		this.updateSubmissionUI("submitting")
 
 		const currentScore = this.engine.score
 
@@ -793,7 +817,6 @@ class GameApp {
 			return // Do not proceed with submission
 		}
 
-		this.updateSubmissionUI("submitting")
 		this.submitScoreToLeaderboard(playerName.trim())
 	}
 
@@ -984,6 +1007,11 @@ class GameApp {
 			}
 
 			if (response.ok) {
+				// Mark as submitted in localStorage immediately for redundancy
+				localStorage.setItem(`bp_submitted_run_${runId}`, "true")
+				this.scoreSubmitted = true
+				this.saveGameState() // Save state with scoreSubmitted: true
+
 				if (data && typeof data === "object") {
 					const entry = (data as any).entry
 					if (entry && typeof entry === "object") {
@@ -1002,7 +1030,6 @@ class GameApp {
 						name,
 						score: this.engine.score,
 					}
-					localStorage.setItem(`bp_submitted_run_${runId}`, "true")
 				}
 				this.updateSubmissionUI("success")
 
@@ -1011,6 +1038,7 @@ class GameApp {
 					this.openLeaderboard()
 				}, 400)
 			} else {
+				this.scoreSubmitted = false // Allow retry on failure
 				console.error("[Score Submit] Submission failed.", {
 					status,
 					url,
@@ -1019,13 +1047,13 @@ class GameApp {
 					jsonBody: data,
 					rawBodySnippet: rawBody ? rawBody.slice(0, 200) : null,
 				})
-				const errorMessage =
-					data && typeof data === "object" && (data as any).error ? `Failed to submit score: ${(data as any).error}` : "Failed to submit score. You can start a new run and try again."
+				const errorMessage = data && typeof data === "object" && (data as any).error ? `Failed to submit score: ${(data as any).error}` : "Failed to submit score. You can try submitting again."
 				this.updateSubmissionUI("error", errorMessage)
 			}
 		} catch (e) {
+			this.scoreSubmitted = false // Allow retry on failure
 			console.error("Error submitting score (network or unexpected):", e)
-			this.updateSubmissionUI("error", "Network error while submitting score. You can start a new run and try again.")
+			this.updateSubmissionUI("error", "Network error while submitting score. You can try submitting again.")
 		}
 	}
 	// -----------------------------------------------
@@ -1051,9 +1079,6 @@ class GameApp {
 			if (this.submitScoreBtn) {
 				console.log("[updatePlayerNameUI] Player name exists. Enabling submit button.")
 				this.submitScoreBtn.disabled = false
-				this.submitScoreBtn.addEventListener("click", () => {
-					this.submitScoreToLeaderboard(playerName.trim())
-				})
 			}
 		} else {
 			// No name: hide display, show input, clear input, disable submit button
@@ -1085,12 +1110,20 @@ class GameApp {
 			// Only run transition logic if overlay was effectively hidden (or we are initializing)
 			if (!this.gameOverModal.isVisible()) {
 				this.gameOverModal.show()
+
 				// Check if this run was already submitted on a previous session/refresh
-				if (this.runId && localStorage.getItem(`bp_submitted_run_${this.runId}`)) {
+				if (!this.scoreSubmitted && this.runId && localStorage.getItem(`bp_submitted_run_${this.runId}`)) {
 					this.scoreSubmitted = true
 				}
+
+				console.log(`[updateUI] Game Over. scoreSubmitted: ${this.scoreSubmitted}`)
+
 				// Reset submission UI each time the game over screen is first shown
-				this.updateSubmissionUI("idle")
+				if (this.scoreSubmitted) {
+					this.updateSubmissionUI("success")
+				} else {
+					this.updateSubmissionUI("idle")
+				}
 				document.getElementById("final-score")!.textContent = this.engine.score.toString()
 
 				// Show High Score Label if we beat the prior best
@@ -1129,8 +1162,11 @@ class GameApp {
 					const playerName = localStorage.getItem("bp_player_name")
 					const currentScore = this.engine.score
 
-					if (currentScore > 0) {
+					if (currentScore > 0 && !this.scoreSubmitted) {
+						console.log(`[updateUI] Triggering checkTop20AndNotify. score: ${currentScore}`)
 						this.checkTop20AndNotify(currentScore, playerName)
+					} else {
+						console.log(`[updateUI] Skipping checkTop20AndNotify. score: ${currentScore}, scoreSubmitted: ${this.scoreSubmitted}`)
 					}
 				}
 			}
@@ -1142,6 +1178,8 @@ class GameApp {
 	}
 
 	private async checkTop20AndNotify(score: number, playerName: string | null) {
+		if (this.scoreSubmitted) return
+
 		const statusContainer = document.getElementById("leaderboard-status-container")
 		const statusText = document.getElementById("leaderboard-status-text")
 		if (!statusContainer || !statusText) return
@@ -1644,6 +1682,7 @@ class GameApp {
 		// Start the new run immediately with the generated seed.
 		const seed = this.gameSeed
 		this.engine.reset(seed)
+		this.engine.chillMode = this.chillMode
 		if (this.DEBUG_SPAWN_POWERUP_ON_START) {
 			this.engine.spawnTestPowerup()
 		}

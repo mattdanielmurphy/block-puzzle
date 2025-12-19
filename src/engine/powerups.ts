@@ -52,7 +52,7 @@ export class PowerupManager {
 		this.rng = rng
 	}
 
-	update(currentTime: number, grid: Grid): void {
+	update(currentTime: number, grid: Grid, isChill: boolean = false): void {
 		// Initialize lastUpdateTime if strictly 0 (first frame)
 		if (this.lastUpdateTime === 0) {
 			this.lastUpdateTime = currentTime
@@ -67,8 +67,10 @@ export class PowerupManager {
 			return age < p.lifetime
 		})
 
-		// 2. Try to spawn new powerup based on time
-		this.checkSpawn(currentTime, dt, grid)
+		// 2. Try to spawn new powerup based on time (Normal mode only)
+		if (!isChill) {
+			this.checkSpawn(currentTime, dt, grid)
+		}
 	}
 
 	private checkSpawn(currentTime: number, dt: number, grid: Grid) {
@@ -102,10 +104,19 @@ export class PowerupManager {
 	}
 
 	// Called after a successful block placement.
-	// DEPRECATED regarding spawning logic, but kept for interface compatibility if needed.
-	// We no longer spawn here directly.
-	onPlacement(currentTime: number, grid: Grid): void {
-		// No-op for spawning.
+	onPlacement(currentTime: number, grid: Grid, isChill: boolean = false): void {
+		if (!isChill) return
+
+		// In chill mode, we have a fixed probability per placement, but we still apply the cooldown factor
+		// to avoid rapid-fire bombs.
+		const timeSinceLast = this.lastSpawnTime === 0 ? this.COOLDOWN_DURATION : currentTime - this.lastSpawnTime
+		const progress = Math.min(1, Math.max(0, timeSinceLast / this.COOLDOWN_DURATION))
+		const probabilityFactor = progress * progress * progress
+
+		const CHILL_SPAWN_CHANCE = 0.15 // 15% chance per placement
+		if (this.rng.next() < CHILL_SPAWN_CHANCE * probabilityFactor) {
+			this.spawnPowerup(currentTime, grid)
+		}
 	}
 
 	private spawnPowerup(currentTime: number, grid: Grid): void {
