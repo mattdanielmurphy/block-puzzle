@@ -294,6 +294,10 @@ export class GameEngine {
 			points += powerupActivation.pointsAwarded
 		}
 
+		if (!options?.isTutorial) {
+			this.score += points
+		}
+
 		// Chance to spawn a powerup after a successful placement (post-clear so it lands on empty cells)
 		this.powerupManager.onPlacement(timestamp, this.grid)
 
