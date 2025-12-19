@@ -101,6 +101,7 @@ const GAME_OVER_QUOTES = [
 	"Did you know sheep can recognize and remember human faces for up to two years?",
 	"Did you know koalas sleep up to 22 hours daily to digest their low-nutrient eucalyptus diet?",
 	"Did you know Cuvier’s beaked whales hold their breath for over two hours while diving?",
+	"Did you get the yogurt effect™?",
 ]
 
 class GameApp {
@@ -171,6 +172,7 @@ class GameApp {
 	private seeLeaderboardLink: HTMLAnchorElement | null = null
 	private playerNameDisplay: HTMLDivElement | null = null
 	private displayPlayerNameSpan: HTMLSpanElement | null = null
+	private submitNameBtn: HTMLButtonElement | null = null
 
 	// Leaderboard State
 	private lastSubmittedEntry: { name: string; score: number } | null = null
@@ -203,6 +205,7 @@ class GameApp {
 		this.seeLeaderboardLink = document.getElementById("see-leaderboard-link") as HTMLAnchorElement
 		this.playerNameDisplay = document.getElementById("player-name-display") as HTMLDivElement
 		this.displayPlayerNameSpan = document.getElementById("display-player-name") as HTMLSpanElement
+		this.submitNameBtn = document.getElementById("submit-name-btn") as HTMLButtonElement
 
 		// Generate runId and seed using crypto.getRandomValues()
 		this.runId = this.generateRunId()
@@ -407,6 +410,10 @@ class GameApp {
 		const statusEl = document.getElementById("submission-status-message")
 		const rankingEl = document.getElementById("leaderboard-ranking")
 
+		if (this.submitNameBtn) {
+			this.submitNameBtn.disabled = state === "submitting"
+		}
+
 		switch (state) {
 			case "idle":
 				if (statusEl) {
@@ -472,14 +479,28 @@ class GameApp {
 				const playerName = this.playerNameInput.value.trim()
 				// Save player name to localStorage immediately
 				localStorage.setItem("bp_player_name", playerName)
+			}
+		})
 
-				// If on game over screen and we just got a name, try to submit
-				if (this.engine.isGameOver && !this.scoreSubmitted && playerName !== "") {
+		const handleNameSubmission = () => {
+			if (this.playerNameInput) {
+				const playerName = this.playerNameInput.value.trim()
+				if (playerName !== "" && this.engine.isGameOver && !this.scoreSubmitted) {
 					this.playerNameMissingContainer?.classList.add("hidden")
 					// Re-check PB and submit
 					const contextPromise = this.fetchContextualLeaderboard(this.engine.score)
-					this.checkPBAndSubmit(this.engine.score, playerName, contextPromise)
+					this.checkPBAndSubmit(this.engine.score, playerName, contextPromise, true)
 				}
+			}
+		}
+
+		this.submitNameBtn?.addEventListener("click", () => {
+			handleNameSubmission()
+		})
+
+		this.playerNameInput?.addEventListener("keydown", (e) => {
+			if (e.key === "Enter") {
+				handleNameSubmission()
 			}
 		})
 
@@ -1066,10 +1087,7 @@ class GameApp {
 		console.log("[updatePlayerNameUI] Function called.")
 		const playerName = localStorage.getItem("bp_player_name")
 
-		// Ensure playerNameSubmissionContainer is always visible as it contains the input
-		if (this.playerNameSubmissionContainer) {
-			this.playerNameSubmissionContainer.classList.remove("hidden")
-		}
+		// Syncing the input and display text. Visibility is handled conditionally during game over.
 
 		if (playerName && playerName.trim() !== "") {
 			// Name is set: show display, hide input, pre-fill input
@@ -1172,17 +1190,24 @@ class GameApp {
 				const playerName = localStorage.getItem("bp_player_name")
 				const currentScore = this.engine.score
 
-				// Reveal buttons exactly after delay
+				// Reveal actions exactly after delay
 				this.gameOverActionsTimeout = setTimeout(() => {
 					if (gameOverActions) gameOverActions.classList.remove("hidden")
 
-					if (currentScore > 0 && !this.scoreSubmitted) {
-						if (submissionContainer) submissionContainer.classList.remove("hidden")
-						if (!playerName || playerName.trim() === "") {
-							if (nameMissingContainer) nameMissingContainer.classList.remove("hidden")
-						}
-					} else if (currentScore > 0 && this.scoreSubmitted) {
+					if (currentScore > 0 && this.scoreSubmitted) {
 						this.fetchAndRenderMiniLeaderboard()
+					} else if (currentScore > 0 && !this.scoreSubmitted) {
+						// Only show name input if it is a personal best and we don't have a name yet.
+						// This handles the case where the PB check finished BEFORE the timeout.
+						const isPB = this.contextualLeaderboardData?.isPersonalBest
+						if (isPB && (!playerName || playerName.trim() === "")) {
+							if (this.playerNameSubmissionContainer) {
+								this.playerNameSubmissionContainer.classList.remove("hidden")
+							}
+							if (nameMissingContainer) {
+								nameMissingContainer.classList.remove("hidden")
+							}
+						}
 					}
 				}, delay)
 
@@ -1196,7 +1221,7 @@ class GameApp {
 		}
 	}
 
-	private async checkPBAndSubmit(score: number, playerName: string | null, contextPromise: Promise<any>) {
+	private async checkPBAndSubmit(score: number, playerName: string | null, contextPromise: Promise<any>, isManual: boolean = false) {
 		if (this.scoreSubmitted) return
 
 		const miniStatusText = document.getElementById("mini-leaderboard-status")
@@ -1208,9 +1233,19 @@ class GameApp {
 
 			if (isPB) {
 				if (playerName && playerName.trim() !== "") {
-					if (miniStatusText) miniStatusText.textContent = "New personal best! Score was auto-submitted."
+					if (miniStatusText) {
+						miniStatusText.textContent = isManual ? "New personal best!" : "New personal best! Score was auto-submitted."
+					}
 					// Autosubmit and show the mini-leaderboard when done
 					this.attemptScoreSubmission()
+				} else {
+					// PB but no name - show input IF the delay has passed
+					const gameOverActions = document.getElementById("game-over-actions")
+					const isRevealed = gameOverActions && !gameOverActions.classList.contains("hidden")
+					if (isRevealed) {
+						if (this.playerNameSubmissionContainer) this.playerNameSubmissionContainer.classList.remove("hidden")
+						if (this.playerNameMissingContainer) this.playerNameMissingContainer.classList.remove("hidden")
+					}
 				}
 			}
 		} catch (e) {

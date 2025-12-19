@@ -7,7 +7,7 @@
 		<meta name="description" content="Block Sudoku Puzzle Game" />
 		<link rel="stylesheet" href="/styles.css" />
 		<link rel="manifest" href="/manifest.json" />
-		<meta name="theme-color" content="#1a1a1a" />
+		<meta name="theme-color" content="#050815" />
 		<meta name="apple-mobile-web-app-capable" content="yes" />
 		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 	</head>
@@ -69,6 +69,7 @@
 
 					<div id="player-name-submission-container">
 						<input type="text" id="player-name-input" placeholder="Enter your name" />
+						<button id="submit-name-btn" class="primary-btn">Submit</button>
 					</div>
 					<div id="submission-status-message" class="hidden"></div>
 					<div id="game-over-actions">
@@ -115,9 +116,9 @@
 				</div>
 			</main>
 
-			<footer>
+			<!-- <footer>
 				<span id="app-version"></span>
-			</footer>
+			</footer> -->
 		</div>
 		<script type="module" src="/src/main.ts"></script>
 		<script>
