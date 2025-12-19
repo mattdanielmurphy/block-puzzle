@@ -168,6 +168,7 @@ class GameApp {
 
 	// Leaderboard State
 	private lastSubmittedEntry: { name: string; score: number } | null = null
+	private contextualLeaderboardData: any = null
 
 	// Modals
 	private settingsModal!: Modal
@@ -487,6 +488,10 @@ class GameApp {
 			this.openLeaderboard()
 		})
 
+		document.getElementById("show-full-leaderboard-btn")?.addEventListener("click", () => {
+			this.openLeaderboard()
+		})
+
 		document.getElementById("pause-overlay")?.addEventListener("click", () => {
 			this.resumeGame()
 		})
@@ -660,6 +665,7 @@ class GameApp {
 		this.lastPlaceability = []
 
 		this.gameOverModal.hide()
+		document.getElementById("mini-leaderboard-container")?.classList.add("hidden")
 		document.getElementById("highscore-notification")?.classList.add("hidden")
 		document.getElementById("game-over-highscore-label")?.classList.add("hidden")
 
@@ -817,7 +823,7 @@ class GameApp {
 			return // Do not proceed with submission
 		}
 
-		this.submitScoreToLeaderboard(playerName.trim())
+		this.submitScoreToLeaderboard(playerName.trim(), manualSubmit)
 	}
 
 	// --- LEADERBOARD INTEGRATION ---
@@ -950,7 +956,7 @@ class GameApp {
 		el.classList.add("hidden")
 	}
 
-	private async submitScoreToLeaderboard(name: string): Promise<void> {
+	private async submitScoreToLeaderboard(name: string, showImmediately: boolean = true): Promise<void> {
 		if (!this.runId || this.gameSeed === null || this.scoreSubmitted) {
 			console.warn("Cannot submit score: runId or seed is missing, or score already submitted. Aborting.")
 			return
@@ -1033,10 +1039,24 @@ class GameApp {
 				}
 				this.updateSubmissionUI("success")
 
-				// Auto-open leaderboard after a short delay so user can see their rank.
-				setTimeout(() => {
-					this.openLeaderboard()
-				}, 400)
+				if (showImmediately) {
+					// Hide submission UI
+					const submissionContainer = document.getElementById("player-name-submission-container")
+					const submissionActions = document.getElementById("game-over-submission-actions")
+					const statusContainer = document.getElementById("leaderboard-status-container")
+					if (submissionContainer) submissionContainer.classList.add("hidden")
+					if (submissionActions) submissionActions.classList.add("hidden")
+					if (statusContainer) statusContainer.classList.add("hidden")
+
+					// If we already have context data, it might be slightly stale now that we've submitted.
+					// However, for the mini-leaderboard, we can usually just re-render with the 'isSelf' match.
+					// To be perfectly accurate, we re-fetch context if it was a manual submission.
+					// Clear cached context to force re-fetch with new rank if needed
+					this.contextualLeaderboardData = null
+
+					// Show mini leaderboard
+					this.fetchAndRenderMiniLeaderboard()
+				}
 			} else {
 				this.scoreSubmitted = false // Allow retry on failure
 				console.error("[Score Submit] Submission failed.", {
@@ -1126,92 +1146,194 @@ class GameApp {
 				}
 				document.getElementById("final-score")!.textContent = this.engine.score.toString()
 
-				// Show High Score Label if we beat the prior best
-				const highscoreLabel = document.getElementById("game-over-highscore-label")
-				if (highscoreLabel) {
-					if (this.engine.score > this.priorBestScore) {
-						highscoreLabel.classList.remove("hidden")
-					} else {
-						highscoreLabel.classList.add("hidden")
-					}
-				}
-
-				// Display a random quote
-				const quoteElement = document.getElementById("game-over-quote")
-				let quoteLength = 0
-				if (quoteElement) {
-					const quote = this.getRandomUnusedQuote()
-					quoteElement.textContent = quote
-					quoteLength = quote.length
-				}
-
-				// Hide Restart Button and show it after a delay
-				const gameOverActions = document.getElementById("game-over-actions")
-				if (gameOverActions) {
-					gameOverActions.classList.add("hidden")
-					if (this.gameOverActionsTimeout) clearTimeout(this.gameOverActionsTimeout)
-
-					// Delay based on reading time: .5s base + 10ms per character
-					const delay = Math.min(2000, 500 + quoteLength * 10)
-					this.gameOverActionsTimeout = setTimeout(() => {
-						gameOverActions.classList.remove("hidden")
-					}, delay)
-
-					// Submit score to leaderboard (only once, if score > 0)
-					// Only attempt submission if a player name is set
-					const playerName = localStorage.getItem("bp_player_name")
-					const currentScore = this.engine.score
-
-					if (currentScore > 0 && !this.scoreSubmitted) {
-						console.log(`[updateUI] Triggering checkTop20AndNotify. score: ${currentScore}`)
-						this.checkTop20AndNotify(currentScore, playerName)
-					} else {
-						console.log(`[updateUI] Skipping checkTop20AndNotify. score: ${currentScore}, scoreSubmitted: ${this.scoreSubmitted}`)
-					}
-				}
-			}
-		}
-
-		if (this.engine.isGameOver) {
+				                // Start fetching contextual leaderboard in parallel
+				                this.contextualLeaderboardData = null
+				                const contextPromise = this.fetchContextualLeaderboard(this.engine.score)
+				
+				                // Show High Score Label if we beat the prior best
+				                const highscoreLabel = document.getElementById("game-over-highscore-label")
+				                if (highscoreLabel) {
+				                    if (this.engine.score > this.priorBestScore) {
+				                        highscoreLabel.classList.remove("hidden")
+				                    } else {
+				                        highscoreLabel.classList.add("hidden")
+				                    }
+				                }
+				
+				                // Display a random quote
+				                const quoteElement = document.getElementById("game-over-quote")
+				                let quoteLength = 0
+				                if (quoteElement) {
+				                    const quote = this.getRandomUnusedQuote()
+				                    quoteElement.textContent = quote
+				                    quoteLength = quote.length
+				                }
+				
+				                // Initial state: hide everything except header, score, and quote
+				                const gameOverActions = document.getElementById("game-over-actions")
+				                const submissionContainer = document.getElementById("player-name-submission-container")
+				                const submissionActions = document.getElementById("game-over-submission-actions")
+				                const miniLeaderboard = document.getElementById("mini-leaderboard-container")
+				                const statusContainer = document.getElementById("leaderboard-status-container")
+				
+				                if (gameOverActions) gameOverActions.classList.add("hidden")
+				                if (submissionContainer) submissionContainer.classList.add("hidden")
+				                if (submissionActions) submissionActions.classList.add("hidden")
+				                if (miniLeaderboard) miniLeaderboard.classList.add("hidden")
+				                if (statusContainer) statusContainer.classList.add("hidden")
+				
+				                				if (this.gameOverActionsTimeout) clearTimeout(this.gameOverActionsTimeout)
+				                
+				                				// Delay based on reading time: .5s base + 10ms per character
+				                				const delay = Math.min(2000, 500 + quoteLength * 10)
+				                
+				                				// Handle leaderboard and submission logic in parallel
+				                				const playerName = localStorage.getItem("bp_player_name")
+				                				const currentScore = this.engine.score
+				                
+				                				// Reveal buttons exactly after delay
+				                				this.gameOverActionsTimeout = setTimeout(() => {
+				                					if (gameOverActions) gameOverActions.classList.remove("hidden")
+				                
+				                					if (currentScore > 0 && !this.scoreSubmitted) {
+				                						if (submissionContainer) submissionContainer.classList.remove("hidden")
+				                						if (submissionActions) submissionActions.classList.remove("hidden")
+				                					} else if (currentScore > 0 && this.scoreSubmitted) {
+				                						this.fetchAndRenderMiniLeaderboard()
+				                					}
+				                				}, delay)
+				                
+				                				if (currentScore > 0 && !this.scoreSubmitted) {
+				                					this.checkTop20AndNotify(currentScore, playerName, contextPromise)
+				                				}
+				                			}
+				                		}		if (this.engine.isGameOver) {
 			this.updateCountdownUI(null)
 		}
 	}
 
-	private async checkTop20AndNotify(score: number, playerName: string | null) {
+	private async checkTop20AndNotify(score: number, playerName: string | null, contextPromise: Promise<any>) {
 		if (this.scoreSubmitted) return
 
 		const statusContainer = document.getElementById("leaderboard-status-container")
 		const statusText = document.getElementById("leaderboard-status-text")
-		if (!statusContainer || !statusText) return
-
-		statusContainer.classList.add("hidden")
+		const miniStatusText = document.getElementById("mini-leaderboard-status")
 
 		try {
-			const leaderboard = await this.fetchLeaderboardScores()
-			const TOP_N = 20
-			let isTop20 = false
-
-			if (leaderboard.length < TOP_N) {
-				isTop20 = true
-			} else {
-				const lowestTopScore = leaderboard[TOP_N - 1]?.score ?? 0
-				if (score > lowestTopScore) {
-					isTop20 = true
-				}
-			}
+			// Wait for the contextual data (already fetching in parallel)
+			const context = await contextPromise
+			const isTop20 = context && context.playerRank <= 20
 
 			if (isTop20) {
-				statusContainer.classList.remove("hidden")
 				if (playerName && playerName.trim() !== "") {
-					statusText.textContent = "You're in the top 20! Your score will be autosubmitted."
-					this.attemptScoreSubmission()
+					if (miniStatusText) miniStatusText.textContent = "Score was autosubmitted because it's in the top 20!"
+					// Autosubmit and show the mini-leaderboard when done
+					this.attemptScoreSubmission(true)
 				} else {
-					statusText.textContent = "You're in the top 20! Enter your name and hit 'Submit Score' to join the leaderboard."
+					if (statusContainer) statusContainer.classList.remove("hidden")
+					if (statusText) statusText.textContent = "You should submit your score! Your score ranks among the top 20 on the leaderboard! Type in your name and hit Submit Score."
 				}
 			}
 		} catch (e) {
 			console.error("Failed to check top 20 status:", e)
 		}
+	}
+
+	private async fetchContextualLeaderboard(score: number): Promise<any> {
+		try {
+			const data = await this.fetchContextualLeaderboardScores(score)
+			this.contextualLeaderboardData = data
+			return data
+		} catch (e) {
+			console.error("Failed to prefetch contextual leaderboard:", e)
+			return null
+		}
+	}
+
+	private async fetchContextualLeaderboardScores(score: number): Promise<any> {
+		const mode = this.chillMode ? "chill" : "normal"
+		const resp = await fetch(`/api/leaderboard/context?score=${score}&mode=${mode}`)
+		if (!resp.ok) throw new Error("Failed to fetch contextual leaderboard")
+		return await resp.json()
+	}
+
+	private async fetchAndRenderMiniLeaderboard() {
+		const miniLeaderboard = document.getElementById("mini-leaderboard-container")
+		if (!miniLeaderboard) return
+
+		try {
+			const context = this.contextualLeaderboardData || (await this.fetchContextualLeaderboardScores(this.engine.score))
+			this.renderMiniLeaderboardFromContext(context)
+		} catch (e) {
+			console.error("Failed to fetch mini leaderboard:", e)
+		}
+	}
+
+	private renderMiniLeaderboardFromContext(context: any) {
+		const miniLeaderboard = document.getElementById("mini-leaderboard-container")
+		const miniList = document.getElementById("mini-leaderboard-list")
+		if (!miniLeaderboard || !miniList) return
+
+		miniList.innerHTML = ""
+		miniLeaderboard.classList.remove("hidden")
+
+		const playerName = localStorage.getItem("bp_player_name") || "You"
+		const playerScore = this.engine.score
+
+		const entries: any[] = []
+
+		// 1. Top Score (always rank 1)
+		if (context.topScore) {
+			entries.push({ ...context.topScore, isSelf: context.playerRank === 1 })
+		}
+
+		// 2. Surrounding + Self
+		const playerEntry = { name: playerName, score: playerScore, rank: context.playerRank, isSelf: true }
+
+		// Add neighbors and self, ensuring they are sorted by rank
+		const others = [...(context.surrounding || [])]
+		if (context.playerRank > 1) {
+			others.push(playerEntry)
+		}
+		others.sort((a, b) => a.rank - b.rank)
+
+		others.forEach((entry) => {
+			// Don't duplicate top score if player is rank 1 or neighbors are rank 1
+			if (entry.rank > 1) {
+				entries.push(entry)
+			}
+		})
+
+		// Render with ellipses where gaps exist
+		entries.forEach((entry, i) => {
+			if (i > 0 && entry.rank > entries[i - 1].rank + 1) {
+				const liEllipsis = document.createElement("li")
+				liEllipsis.className = "leaderboard-ellipsis"
+				liEllipsis.style.justifyContent = "center"
+				liEllipsis.textContent = "..."
+				miniList.appendChild(liEllipsis)
+			}
+
+			const li = document.createElement("li")
+			if (entry.isSelf) li.classList.add("leaderboard-self")
+
+			const rankSpan = document.createElement("span")
+			rankSpan.className = "leaderboard-rank"
+			rankSpan.textContent = String(entry.rank)
+
+			const nameSpan = document.createElement("span")
+			nameSpan.className = "leaderboard-name"
+			nameSpan.textContent = entry.name ?? "???"
+
+			const scoreSpan = document.createElement("span")
+			scoreSpan.className = "leaderboard-score"
+			scoreSpan.textContent = String(entry.score ?? 0)
+
+			li.appendChild(rankSpan)
+			li.appendChild(nameSpan)
+			li.appendChild(scoreSpan)
+			miniList.appendChild(li)
+		})
 	}
 
 	private updateCountdownUI(remainingMs: number | null) {

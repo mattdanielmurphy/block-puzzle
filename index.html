@@ -46,10 +46,19 @@
 					<div class="hand-timer-fill"></div>
 				</div>
 				<div id="game-over-overlay" class="hidden overlay">
-					<h1>Game Over</h1>
+					<h1>End Game</h1>
 					<p id="game-over-highscore-label" class="hidden">New High Score!</p>
 					<p>Final Score: <span id="final-score">0</span></p>
-					<p id="game-over-quote"></p>
+					<div id="game-over-quote-container">
+						<p id="game-over-quote"></p>
+					</div>
+
+					<div id="mini-leaderboard-container" class="hidden">
+						<div id="mini-leaderboard-status"></div>
+						<ol id="mini-leaderboard-list" class="leaderboard-list"></ol>
+						<button id="show-full-leaderboard-btn" class="secondary-btn small">Show full leaderboard</button>
+					</div>
+
 					<div id="leaderboard-status-container" class="hidden">
 						<p id="leaderboard-status-text"></p>
 					</div>
@@ -59,7 +68,9 @@
 					<!-- <div id="player-name-display" class="hidden">
 						<p>Player: <span id="display-player-name"></span></p>
 					</div> -->
-					<button id="submit-score-btn" class="secondary-btn" disabled>Submit Score</button>
+					<div id="game-over-submission-actions">
+						<button id="submit-score-btn" class="secondary-btn" disabled>Submit Score</button>
+					</div>
 					<div id="submission-status-message" class="hidden"></div>
 					<!-- <div id="leaderboard-ranking" class="hidden"></div> -->
 					<div id="game-over-actions">
