@@ -104,11 +104,13 @@ export async function handler(req: VercelRequest, res: VercelResponse) {
 		}
 
 		const mode = typeof body.mode === "string" ? body.mode : "normal"
+		const table = mode === "chill" ? "chill_scores" : "scores"
+		const trimFunction = mode === "chill" ? "trim_chill_scores" : "trim_verified_scores"
 
 		// F) Insert score directly (no verification)
 		const { data: entry, error: insertError } = await supabase
-			.from("scores")
-			.insert({ run_id: runId, name: nameV.value, score: scoreV.value, mode: mode })
+			.from(table)
+			.insert({ run_id: runId, name: nameV.value, score: scoreV.value })
 			.select()
 			.single()
 
@@ -122,8 +124,8 @@ export async function handler(req: VercelRequest, res: VercelResponse) {
 		}
 
 		// G) Trim verified scores to 100
-		const { error: deleteError } = await supabase.rpc("trim_verified_scores")
-		if (deleteError) console.error("Submit: Error trimming verified scores:", deleteError)
+		const { error: deleteError } = await supabase.rpc(trimFunction)
+		if (deleteError) console.error(`Submit: Error trimming ${table}:`, deleteError)
 
 		const resp: SubmitResponse = { ok: true, status: "ACCEPTED", entry }
 		return http.json(res, 200, resp)

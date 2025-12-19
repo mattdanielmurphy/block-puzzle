@@ -14,7 +14,14 @@ import { supabase } from "./_lib/supabase"
 //   run_id TEXT UNIQUE NOT NULL,
 //   name TEXT NOT NULL,
 //   score INTEGER NOT NULL,
-//   mode TEXT NOT NULL DEFAULT 'normal',
+//   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+// );
+//
+// CREATE TABLE chill_scores (
+//   id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+//   run_id TEXT UNIQUE NOT NULL,
+//   name TEXT NOT NULL,
+//   score INTEGER NOT NULL,
 //   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 // );
 //
@@ -77,11 +84,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 	if (!Number.isFinite(limit)) return errorJson(res, 400, "VALIDATION_ERROR", "limit must be a number")
 
 	const mode = typeof modeParam === "string" ? modeParam : "normal"
+	const table = mode === "chill" ? "chill_scores" : "scores"
 
 	const { data: verified, error: verifiedError } = await supabase
-		.from("scores")
+		.from(table)
 		.select("run_id, name, score, created_at")
-		.eq("mode", mode)
 		.order("score", { ascending: false })
 		.limit(limit)
 
