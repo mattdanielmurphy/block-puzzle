@@ -144,8 +144,8 @@ class GameApp {
 	private isAutoSelecting: boolean = false
 	private viewCursorPos: { x: number; y: number } = { x: 0, y: 0 }
 	private getHandTimeLimit(): number {
-		// Start at 10s, decrease by 100ms per hand, min 8s
-		return Math.max(8000, 10000 - (this.engine.handGeneration - 1) * 100)
+		// Start at 12s, decrease by 100ms per hand, min 8s
+		return Math.max(8000, 12000 - (this.engine.handGeneration - 1) * 100)
 	}
 	private handDeadline: number | null = null
 	private lastHandGeneration: number = -1
