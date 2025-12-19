@@ -3,3 +3,4 @@ dist
 .DS_Store
 .gemini
 .vercel
+\n# Environment variables\n.env*
