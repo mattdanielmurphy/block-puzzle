@@ -173,17 +173,6 @@ export class GameEngine {
 
 		this.currentShapes[shapeIndex] = null
 
-		// 1.5 Check for powerup collection
-		const collectedPowerup = this.powerupManager.checkCollection(placedCells)
-		let powerupActivation: PowerupActivation | null = null
-		if (collectedPowerup) {
-			powerupActivation = this.powerupManager.activatePowerup(collectedPowerup, this.grid)
-			// Clear cells affected by powerup
-			for (const cell of powerupActivation.affectedCells) {
-				this.grid[this.getIndex(cell.r, cell.c)] = 0
-			}
-		}
-
 		// 2. Calculate placement points
 		// Special case: 3x3 block gets fewer points (it's a "lucky" block)
 		let points = shape.cells.length
@@ -256,25 +245,6 @@ export class GameEngine {
 			}
 		}
 
-		// Fast Move Multiplier
-		const now = timestamp
-		const timeSinceLastMove = now - this.lastMoveTime
-		let moveMultiplier = 1
-		if (timeSinceLastMove < 1500 && this.moves > 0) {
-			// 1.5 seconds threshold, skip first move
-			moveMultiplier = 1.5
-			points = Math.floor(points * moveMultiplier)
-		}
-
-		// Add powerup points if any
-		if (powerupActivation) {
-			points += powerupActivation.pointsAwarded
-		}
-
-		if (!options?.isTutorial) {
-			this.score += points
-		}
-
 		// 5. Apply Clears
 		const cellsToClear = new Set<number>()
 
@@ -297,6 +267,32 @@ export class GameEngine {
 		cellsToClear.forEach((idx) => {
 			this.grid[idx] = 0
 		})
+
+		// 5.5 Check for powerup collection (MOVED after line clears)
+		const collectedPowerup = this.powerupManager.checkCollection(placedCells)
+		let powerupActivation: PowerupActivation | null = null
+		if (collectedPowerup) {
+			powerupActivation = this.powerupManager.activatePowerup(collectedPowerup, this.grid)
+			// Clear cells affected by powerup
+			for (const cell of powerupActivation.affectedCells) {
+				this.grid[this.getIndex(cell.r, cell.c)] = 0
+			}
+		}
+
+		// Fast Move Multiplier
+		const now = timestamp
+		const timeSinceLastMove = now - this.lastMoveTime
+		let moveMultiplier = 1
+		if (timeSinceLastMove < 1500 && this.moves > 0) {
+			// 1.5 seconds threshold, skip first move
+			moveMultiplier = 1.5
+			points = Math.floor(points * moveMultiplier)
+		}
+
+		// Add powerup points if any
+		if (powerupActivation) {
+			points += powerupActivation.pointsAwarded
+		}
 
 		// Chance to spawn a powerup after a successful placement (post-clear so it lands on empty cells)
 		this.powerupManager.onPlacement(timestamp, this.grid)
@@ -379,9 +375,11 @@ export class GameEngine {
 	}
 
 	// Update powerups (call this from the game loop)
-	update(currentTime: number = Date.now()) {
+	update(currentTime: number = Date.now(), isActive: boolean = true) {
 		this.lastUpdateTime = currentTime
-		this.powerupManager.update(currentTime, this.grid)
+		if (isActive) {
+			this.powerupManager.update(currentTime, this.grid)
+		}
 	}
 
 	// Testing helper: force spawn a powerup immediately

@@ -66,4 +66,5 @@ export interface SavedAppState {
 	priorBestScore?: number
 	highScoreNotificationShown?: boolean
 	runId: string // Add runId to saved state
+	chillMode?: boolean
 }

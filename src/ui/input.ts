@@ -1,7 +1,7 @@
 import { GameState, Shape } from "../engine/types"
 
-import { GameRenderer } from "./renderer.js"
-import { THEME } from "./theme.js"
+import { GameRenderer } from "./renderer"
+import { THEME } from "./theme"
 
 export interface DragState {
 	shapeIndex: number

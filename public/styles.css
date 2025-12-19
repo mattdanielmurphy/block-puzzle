@@ -241,6 +241,23 @@ canvas {
     max-width: 80%;
 }
 
+#leaderboard-status-container {
+    background: rgba(126, 224, 244, 0.1);
+    border: 1px solid rgba(126, 224, 244, 0.3);
+    border-radius: 8px;
+    padding: 10px 15px;
+    margin: 10px 0;
+    max-width: 85%;
+    text-align: center;
+}
+
+#leaderboard-status-text {
+    margin: 0;
+    font-size: 0.95rem;
+    color: var(--accent-color);
+    line-height: 1.4;
+}
+
 .game-over-actions {
     text-align: center;
 }

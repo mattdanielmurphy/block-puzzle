@@ -4,3 +4,4 @@ dist
 .gemini
 .vercel
 \n# Environment variables\n.env*
+.env*.local

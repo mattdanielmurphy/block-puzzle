@@ -1,6 +1,6 @@
 import { GRID_SIZE } from "../engine/types"
-import { Layout } from "./renderer.js"
-import { THEME } from "./theme.js"
+import { Layout } from "./renderer"
+import { THEME } from "./theme"
 
 export interface Effect {
 	isFinished: boolean

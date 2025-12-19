@@ -1,13 +1,15 @@
-import { BlockClearEffect, FloatingTextEffect } from "./ui/effects.js"
+import { inject } from "@vercel/analytics"
+import { BlockClearEffect, FloatingTextEffect } from "./ui/effects"
 import { GRID_SIZE, SavedAppState, Shape } from "./engine/types"
 
-import { GameEngine } from "./engine/logic.js"
-import { GameRenderer } from "./ui/renderer.js"
-import { InputManager } from "./ui/input.js"
-import { PowerupType } from "./engine/powerups.js"
-import { THEME } from "./ui/theme.js"
-import { TutorialManager } from "./ui/tutorial.js"
-import { VERSION } from "./version.js"
+import { GameEngine } from "./engine/logic"
+import { GameRenderer } from "./ui/renderer"
+import { InputManager } from "./ui/input"
+import { PowerupType } from "./engine/powerups"
+import { THEME } from "./ui/theme"
+import { TutorialManager } from "./ui/tutorial"
+import { VERSION } from "./version"
+import { Modal } from "./ui/modal"
 
 const GAME_OVER_QUOTES = [
 	"A valiant effort.",
@@ -127,6 +129,7 @@ class GameApp {
 	private timerPanic: boolean = false
 	private handTimerRatio: number | null = null
 	private firstBlockPlaced: boolean = false
+	private chillMode: boolean = false
 
 	// Tutorial State
 	tutorialManager: TutorialManager
@@ -134,7 +137,10 @@ class GameApp {
 	// Pause & timers
 	private isPaused: boolean = false
 	private pauseStartedAt: number | null = null
-	private readonly HAND_TIME_LIMIT_MS = 8000
+	private getHandTimeLimit(): number {
+		// Start at 10s, decrease by 100ms per hand, min 8s
+		return Math.max(8000, 10000 - (this.engine.handGeneration - 1) * 100)
+	}
 	private handDeadline: number | null = null
 	private lastHandGeneration: number = -1
 
@@ -162,6 +168,12 @@ class GameApp {
 
 	// Leaderboard State
 	private lastSubmittedEntry: { name: string; score: number } | null = null
+
+	// Modals
+	private settingsModal!: Modal
+	private leaderboardModal!: Modal
+	private gameOverModal!: Modal
+	private pauseModal!: Modal
 
 	constructor() {
 		this.displayVersion()
@@ -239,6 +251,40 @@ class GameApp {
 		this.loadHighScore()
 		this.updateUI()
 		this.updatePlayerNameUI() // Call here to set initial state of player name input/display
+
+		this.leaderboardModal = new Modal("leaderboard-modal", {
+			onShow: () => this.pauseGame(),
+			onClose: () => this.resumeGame(),
+		})
+		this.gameOverModal = new Modal("game-over-overlay", {
+			closeOnOutsideClick: false,
+			closeOnEsc: false,
+		})
+		this.pauseModal = new Modal("pause-overlay", {
+			onShow: () => {
+				this.isPaused = true
+				this.pauseStartedAt = Date.now()
+				// Clear any in-progress drag so resume is clean
+				this.dragShape = null
+				this.dragPos = null
+				this.ghostPos = null
+				const btn = document.getElementById("pause-btn")
+				if (btn) btn.textContent = "▶"
+				this.saveGameState()
+			},
+			onClose: () => {
+				const now = Date.now()
+				if (this.pauseStartedAt && this.handDeadline) {
+					// Push deadline forward by the paused duration
+					this.handDeadline += now - this.pauseStartedAt
+				}
+				this.isPaused = false
+				this.pauseStartedAt = null
+				const btn = document.getElementById("pause-btn")
+				if (btn) btn.textContent = "⏸"
+			},
+		})
+
 		this.bindControls()
 		this.initSettings()
 
@@ -455,9 +501,8 @@ class GameApp {
 				return
 			}
 			if (e.key === "Escape" || e.key === "p" || e.key === " ") {
-				// Don't toggle pause if settings modal is open (it has its own Escape handler)
-				const settingsModal = document.getElementById("settings-modal")
-				if (settingsModal && !settingsModal.classList.contains("hidden")) {
+				// Don't toggle pause if any modal is open
+				if (this.settingsModal.isVisible() || this.leaderboardModal.isVisible() || this.gameOverModal.isVisible() || this.pauseModal.isVisible()) {
 					return
 				}
 				e.preventDefault()
@@ -488,10 +533,15 @@ class GameApp {
 
 	initSettings() {
 		const settingsBtn = document.getElementById("settings-btn")
-		const modal = document.getElementById("settings-modal")
 		const closeBtn = document.getElementById("close-settings-btn")
 		const slider = document.getElementById("sensitivity-slider") as HTMLInputElement
 		const valDisplay = document.getElementById("sensitivity-value")
+		const chillToggle = document.getElementById("chill-mode-toggle") as HTMLInputElement
+
+		this.settingsModal = new Modal("settings-modal", {
+			onShow: () => this.pauseGame(),
+			onClose: () => this.resumeGame(),
+		})
 
 		// Load saved sensitivity
 		const savedSens = localStorage.getItem("bp_sensitivity")
@@ -502,37 +552,25 @@ class GameApp {
 		if (slider) slider.value = initialSens.toString()
 		if (valDisplay) valDisplay.textContent = initialSens.toFixed(1)
 
+		// Load chill mode
+		this.chillMode = localStorage.getItem("bp_chill_mode") === "true"
+		if (chillToggle) {
+			chillToggle.checked = this.chillMode
+			chillToggle.addEventListener("change", (e) => {
+				this.chillMode = (e.target as HTMLInputElement).checked
+				localStorage.setItem("bp_chill_mode", this.chillMode.toString())
+				this.restart()
+				this.settingsModal.hide() // Close settings to show the fresh game
+			})
+		}
+
 		// Events
 		settingsBtn?.addEventListener("click", () => {
-			modal?.classList.remove("hidden")
-			this.pauseGame()
+			this.settingsModal.show()
 		})
 
 		closeBtn?.addEventListener("click", () => {
-			modal?.classList.add("hidden")
-			this.resumeGame()
-		})
-
-		// Close modal when clicking outside of it (on the overlay)
-		modal?.addEventListener("click", (e) => {
-			if (e.target === modal) {
-				modal.classList.add("hidden")
-				this.resumeGame()
-			}
-		})
-
-		// Close modal with Escape key
-		document.addEventListener("keydown", (e) => {
-			// make sure not in a text input field
-			const activeElement = document.activeElement
-			if (activeElement && activeElement.tagName.toLowerCase() === "input") {
-				return
-			}
-			if (e.key === "Escape" && modal && !modal.classList.contains("hidden")) {
-				e.preventDefault()
-				modal.classList.add("hidden")
-				this.resumeGame()
-			}
+			this.settingsModal.hide()
 		})
 
 		slider?.addEventListener("input", (e) => {
@@ -615,7 +653,7 @@ class GameApp {
 		this.reliefUntil = 0
 		this.lastPlaceability = []
 
-		document.getElementById("game-over-overlay")?.classList.add("hidden")
+		this.gameOverModal.hide()
 		document.getElementById("highscore-notification")?.classList.add("hidden")
 		document.getElementById("game-over-highscore-label")?.classList.add("hidden")
 
@@ -633,15 +671,18 @@ class GameApp {
 	}
 
 	loadHighScore() {
-		const best = localStorage.getItem("bp_best_score")
+		const key = this.chillMode ? "bp_best_score_chill" : "bp_best_score"
+		const best = localStorage.getItem(key)
 		if (best) this.engine.bestScore = parseInt(best, 10)
+		else this.engine.bestScore = 0
 		document.getElementById("best-score")!.textContent = this.engine.bestScore.toString()
 	}
 
 	saveHighScore() {
 		if (this.engine.score > this.engine.bestScore) {
 			this.engine.bestScore = this.engine.score
-			localStorage.setItem("bp_best_score", this.engine.score.toString())
+			const key = this.chillMode ? "bp_best_score_chill" : "bp_best_score"
+			localStorage.setItem(key, this.engine.score.toString())
 			document.getElementById("best-score")!.textContent = this.engine.bestScore.toString()
 		}
 	}
@@ -663,6 +704,7 @@ class GameApp {
 			priorBestScore: this.priorBestScore,
 			highScoreNotificationShown: this.highScoreNotificationShown,
 			runId: this.runId!, // Save the current runId (assert non-null)
+			chillMode: this.chillMode,
 		}
 
 		localStorage.setItem("bp_save_state", JSON.stringify(state))
@@ -691,12 +733,11 @@ class GameApp {
 			this.priorBestScore = state.priorBestScore ?? this.engine.bestScore
 			this.highScoreNotificationShown = state.highScoreNotificationShown ?? false
 			this.runId = state.runId // Restore runId from saved state
+			this.chillMode = state.chillMode ?? false
 
 			// If checking paused state, ensure UI reflects it
 			if (this.isPaused) {
-				document.getElementById("pause-overlay")?.classList.remove("hidden")
-				const btn = document.getElementById("pause-btn")
-				if (btn) btn.textContent = "▶"
+				this.pauseModal.show()
 			}
 
 			// Ensure used quotes are synced if engine changed seed?
@@ -760,21 +801,18 @@ class GameApp {
 	// Note: No longer fetching runToken from server. runId and seed are generated client-side.
 
 	private openLeaderboard() {
-		const modal = document.getElementById("leaderboard-modal")
-		if (!modal) return
-		modal.classList.remove("hidden")
+		this.leaderboardModal.show()
 		this.fetchAndRenderLeaderboard()
 	}
 
 	private closeLeaderboard() {
-		const modal = document.getElementById("leaderboard-modal")
-		if (!modal) return
-		modal.classList.add("hidden")
+		this.leaderboardModal.hide()
 	}
 
 	private async fetchLeaderboardScores(): Promise<Array<{ name: string; score: number }>> {
 		try {
-			const resp = await fetch("/api/leaderboard?limit=100")
+			const mode = this.chillMode ? "chill" : "normal"
+			const resp = await fetch(`/api/leaderboard?limit=100&mode=${mode}`)
 			if (!resp.ok) {
 				throw new Error(`Leaderboard request failed with status ${resp.status}`)
 			}
@@ -806,7 +844,13 @@ class GameApp {
 		}
 
 		try {
-			const resp = await fetch("/api/leaderboard?limit=100")
+			const mode = this.chillMode ? "chill" : "normal"
+			const titleEl = document.querySelector("#leaderboard-modal h2")
+			if (titleEl) {
+				titleEl.textContent = `Leaderboard (${this.chillMode ? "Chill" : "Normal"})`
+			}
+
+			const resp = await fetch(`/api/leaderboard?limit=100&mode=${mode}`)
 			if (!resp.ok) {
 				throw new Error(`Leaderboard request failed with status ${resp.status}`)
 			}
@@ -900,6 +944,7 @@ class GameApp {
 				runId: runId,
 				name: name,
 				score: this.engine.score,
+				mode: this.chillMode ? "chill" : "normal",
 			}
 
 			const response = await fetch("/api/leaderboard/submit", {
@@ -1037,10 +1082,9 @@ class GameApp {
 		}
 
 		if (this.engine.isGameOver) {
-			const overlay = document.getElementById("game-over-overlay")
 			// Only run transition logic if overlay was effectively hidden (or we are initializing)
-			if (overlay && overlay.classList.contains("hidden")) {
-				overlay.classList.remove("hidden")
+			if (!this.gameOverModal.isVisible()) {
+				this.gameOverModal.show()
 				// Check if this run was already submitted on a previous session/refresh
 				if (this.runId && localStorage.getItem(`bp_submitted_run_${this.runId}`)) {
 					this.scoreSubmitted = true
@@ -1083,12 +1127,10 @@ class GameApp {
 					// Submit score to leaderboard (only once, if score > 0)
 					// Only attempt submission if a player name is set
 					const playerName = localStorage.getItem("bp_player_name")
-					console.log("[Autosubmit Debug] Checking conditions:", "scoreSubmitted:", this.scoreSubmitted, "engine.score:", this.engine.score, "playerName:", playerName)
-					if (!this.scoreSubmitted && this.engine.score > 0 && playerName && playerName.trim() !== "") {
-						console.log("[Autosubmit Debug] Conditions met. Attempting submission.")
-						this.attemptScoreSubmission()
-					} else {
-						console.log("[Autosubmit Debug] Conditions not met. Skipping submission.")
+					const currentScore = this.engine.score
+
+					if (currentScore > 0) {
+						this.checkTop20AndNotify(currentScore, playerName)
 					}
 				}
 			}
@@ -1096,6 +1138,41 @@ class GameApp {
 
 		if (this.engine.isGameOver) {
 			this.updateCountdownUI(null)
+		}
+	}
+
+	private async checkTop20AndNotify(score: number, playerName: string | null) {
+		const statusContainer = document.getElementById("leaderboard-status-container")
+		const statusText = document.getElementById("leaderboard-status-text")
+		if (!statusContainer || !statusText) return
+
+		statusContainer.classList.add("hidden")
+
+		try {
+			const leaderboard = await this.fetchLeaderboardScores()
+			const TOP_N = 20
+			let isTop20 = false
+
+			if (leaderboard.length < TOP_N) {
+				isTop20 = true
+			} else {
+				const lowestTopScore = leaderboard[TOP_N - 1]?.score ?? 0
+				if (score > lowestTopScore) {
+					isTop20 = true
+				}
+			}
+
+			if (isTop20) {
+				statusContainer.classList.remove("hidden")
+				if (playerName && playerName.trim() !== "") {
+					statusText.textContent = "You're in the top 20! Your score will be autosubmitted."
+					this.attemptScoreSubmission()
+				} else {
+					statusText.textContent = "You're in the top 20! Enter your name and hit 'Submit Score' to join the leaderboard."
+				}
+			}
+		} catch (e) {
+			console.error("Failed to check top 20 status:", e)
 		}
 	}
 
@@ -1132,7 +1209,7 @@ class GameApp {
 			return
 		}
 
-		const ratio = remainingMs / this.HAND_TIME_LIMIT_MS
+		const ratio = remainingMs / this.getHandTimeLimit()
 		applyFill(barFillBottom, ratio, remainingMs)
 		this.handTimerRatio = Math.max(0, Math.min(1, ratio))
 	}
@@ -1144,8 +1221,8 @@ class GameApp {
 			return
 		}
 
-		// Don't start timer during tutorial
-		if (this.tutorialManager.isActive) {
+		// Don't start timer during tutorial or if chill mode is active
+		if (this.tutorialManager.isActive || this.chillMode) {
 			this.updateCountdownUI(null)
 			return
 		}
@@ -1154,7 +1231,7 @@ class GameApp {
 		if (this.engine.handGeneration !== this.lastHandGeneration) {
 			this.lastHandGeneration = this.engine.handGeneration
 			if (!this.engine.isGameOver) {
-				this.handDeadline = now + this.HAND_TIME_LIMIT_MS
+				this.handDeadline = now + this.getHandTimeLimit()
 			} else {
 				this.handDeadline = null
 			}
@@ -1223,30 +1300,12 @@ class GameApp {
 
 	private pauseGame() {
 		if (this.isPaused || this.engine.isGameOver) return
-		this.isPaused = true
-		this.pauseStartedAt = Date.now()
-		// Clear any in-progress drag so resume is clean
-		this.dragShape = null
-		this.dragPos = null
-		this.ghostPos = null
-		document.getElementById("pause-overlay")?.classList.remove("hidden")
-		const btn = document.getElementById("pause-btn")
-		if (btn) btn.textContent = "▶"
-		this.saveGameState()
+		this.pauseModal.show()
 	}
 
 	private resumeGame() {
 		if (!this.isPaused) return
-		const now = Date.now()
-		if (this.pauseStartedAt && this.handDeadline) {
-			// Push deadline forward by the paused duration
-			this.handDeadline += now - this.pauseStartedAt
-		}
-		this.isPaused = false
-		this.pauseStartedAt = null
-		document.getElementById("pause-overlay")?.classList.add("hidden")
-		const btn = document.getElementById("pause-btn")
-		if (btn) btn.textContent = "⏸"
+		this.pauseModal.hide()
 	}
 
 	private togglePause() {
@@ -1465,7 +1524,8 @@ class GameApp {
 
 		// Advance game state (powerup timers/spawns) only during live play
 		if (!this.isPaused) {
-			this.engine.update(now)
+			const isGameActive = this.firstBlockPlaced && !this.engine.isGameOver && !this.tutorialManager.isActive
+			this.engine.update(now, isGameActive)
 		}
 
 		// Manage the per-hand countdown timer
@@ -1598,5 +1658,6 @@ class GameApp {
 
 // Boot
 window.onload = () => {
+	inject()
 	new GameApp()
 }

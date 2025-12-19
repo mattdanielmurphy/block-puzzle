@@ -1,6 +1,6 @@
 import { GRID_SIZE, Grid, Point, SavedPowerupState } from "./types"
 
-import { RNG } from "./rng.js"
+import { RNG } from "./rng"
 
 export enum PowerupType {
 	BOMB_SMALL = "bomb_small", // 3x3

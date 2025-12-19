@@ -14,9 +14,11 @@ import { supabase } from "../_lib/supabase"
 // BEGIN
 //   DELETE FROM scores
 //   WHERE id NOT IN (
-//     SELECT id FROM scores
-//     ORDER BY score DESC
-//     LIMIT 100
+//     SELECT id FROM (
+//       SELECT id, ROW_NUMBER() OVER (PARTITION BY mode ORDER BY score DESC) as rn
+//       FROM scores
+//     ) t
+//     WHERE rn <= 100
 //   );
 // END;
 // $$ LANGUAGE plpgsql;
@@ -25,6 +27,7 @@ type SubmitBody = {
 	runId: unknown
 	name: unknown
 	score: unknown
+	mode: unknown
 }
 
 type SubmitResponse = {
@@ -100,8 +103,14 @@ export async function handler(req: VercelRequest, res: VercelResponse) {
 			return http.errorJson(res, 400, "VALIDATION_ERROR", scoreV.message)
 		}
 
+		const mode = typeof body.mode === "string" ? body.mode : "normal"
+
 		// F) Insert score directly (no verification)
-		const { data: entry, error: insertError } = await supabase.from("scores").insert({ run_id: runId, name: nameV.value, score: scoreV.value }).select().single()
+		const { data: entry, error: insertError } = await supabase
+			.from("scores")
+			.insert({ run_id: runId, name: nameV.value, score: scoreV.value, mode: mode })
+			.select()
+			.single()
 
 		if (insertError) {
 			if (insertError.code === "23505") {

@@ -14,6 +14,7 @@ import { supabase } from "./_lib/supabase"
 //   run_id TEXT UNIQUE NOT NULL,
 //   name TEXT NOT NULL,
 //   score INTEGER NOT NULL,
+//   mode TEXT NOT NULL DEFAULT 'normal',
 //   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 // );
 //
@@ -71,11 +72,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 		}
 	}
 
-	const { limit: limitParam } = req.query
+	const { limit: limitParam, mode: modeParam } = req.query
 	const limit = Math.max(1, Math.min(100, limitParam ? Number(limitParam) : 10))
 	if (!Number.isFinite(limit)) return errorJson(res, 400, "VALIDATION_ERROR", "limit must be a number")
 
-	const { data: verified, error: verifiedError } = await supabase.from("scores").select("run_id, name, score, created_at").order("score", { ascending: false }).limit(limit)
+	const mode = typeof modeParam === "string" ? modeParam : "normal"
+
+	const { data: verified, error: verifiedError } = await supabase
+		.from("scores")
+		.select("run_id, name, score, created_at")
+		.eq("mode", mode)
+		.order("score", { ascending: false })
+		.limit(limit)
 
 	if (verifiedError) {
 		return errorJson(res, 500, "INTERNAL_SERVER_ERROR", "Could not fetch leaderboard.")

@@ -12,6 +12,7 @@
 - **State**: `GameEngine` holds truth. `GameRenderer` is stateless visualization.
 - **Types**: Defined in `src/engine/types.ts` (`Grid` is flattened 1D array).
 - **Styling**: `styles.css` (variables + utility classes).
+- **Security**: `.env*` files are ignored in `.gitignore` and must never be committed.
 
 **Key Files**:
 - `src/main.ts`: Entry point. Game loop, DOM bindings.
@@ -31,4 +32,7 @@
 - Game loads without console errors.
 - New features work on Mobile & Desktop (responsive canvas).
 
-- **Leaderboard Auto-Submission**: The game now automatically submits scores to the leaderboard if they are within the top 20. This check happens at game over.
+- **Hand Timer**: A per-hand countdown timer that resets when a new hand is dealt. It starts at 10 seconds and progressively quickens to a minimum of 8 seconds (100ms faster per hand). If the timer runs out, the game ends.
+- **Powerups (Bombs)**: Bombs are time-based spawns managed by `PowerupManager`. They only spawn when the game is active (after the first piece is placed, the timer has started, and before game over/pause/tutorial).
+- **Modal Component**: Reusable `Modal` class in `src/ui/modal.ts` handles overlays (Settings, Leaderboard, Game Over, Pause). Supports Esc key and outside-click dismissal.
+- **Leaderboard Auto-Submission**: The game automatically checks if a score is in the top 20 at game over. If so, it notifies the user and either autosubmits (if a name is provided) or prompts for a name submission.

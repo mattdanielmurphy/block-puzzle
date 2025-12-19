@@ -1,7 +1,7 @@
 import { GRID_SIZE, GameState, Grid, Point, Shape } from "../engine/types"
 
-import { Effect } from "./effects.js"
-import { THEME } from "./theme.js"
+import { Effect } from "./effects"
+import { THEME } from "./theme"
 
 export interface Layout {
 	boardRect: { x: number; y: number; w: number; h: number; cellSize: number }

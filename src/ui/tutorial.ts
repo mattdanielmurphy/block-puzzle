@@ -1,7 +1,7 @@
 import { GRID_SIZE, MoveResult, Shape } from "../engine/types"
 
-import { GameEngine } from "../engine/logic.js"
-import { GameRenderer } from "./renderer.js"
+import { GameEngine } from "../engine/logic"
+import { GameRenderer } from "./renderer"
 
 export class TutorialManager {
 	private engine: GameEngine
