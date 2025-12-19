@@ -106,7 +106,8 @@ export class GameRenderer {
 		hoveredIndex: number | null = null,
 		currentTime: number = Date.now(),
 		handTimerRatio: number | null = null,
-		handTimerPanic: boolean = false
+		handTimerPanic: boolean = false,
+		isDesktop: boolean = false
 	) {
 		// Clear
 		this.ctx.fillStyle = THEME.colors.background
@@ -125,7 +126,6 @@ export class GameRenderer {
 
 		if (dragShape && dragPos) {
 			this.drawShapeAtPixels(dragShape, dragPos.x, dragPos.y, this.layout.boardRect.cellSize * 1.0)
-			// Dragging shape is slightly larger? No, keep same size for accuracy or maybe slightly lifted.
 		}
 	}
 
@@ -271,20 +271,21 @@ export class GameRenderer {
 				this.ctx.globalAlpha = isPlaceable ? 1.0 : 0.3
 
 				let cellSize = baseCellSize
-				if (i === hoveredIndex && isPlaceable) {
-					// Scale up slightly on hover
-					cellSize *= 1.1
-					// Add a glow/lighten effect
-					this.ctx.shadowColor = "rgba(126, 224, 244, 0.5)"
-					this.ctx.shadowBlur = 15
+				const isHighlighted = i === hoveredIndex
+				if (isHighlighted) {
+					// Scale up on hover - more prominent for 'snapping' feel
+					cellSize *= 1.2
+					// Stronger glow
+					this.ctx.shadowColor = isPlaceable ? "rgba(126, 224, 244, 0.7)" : "rgba(255, 255, 255, 0.3)"
+					this.ctx.shadowBlur = 30
 				}
 
 				// Center the shape
-				const isHighlighted = i === hoveredIndex && isPlaceable
 				this.drawShapeCentered(shape, center.x, center.y, cellSize, isHighlighted)
 
 				this.ctx.globalAlpha = 1.0
 				this.ctx.shadowBlur = 0
+				this.ctx.shadowColor = "transparent"
 			}
 		})
 	}
@@ -361,7 +362,6 @@ export class GameRenderer {
 			this.ctx.fill()
 		})
 
-		this.ctx.shadowColor = "transparent"
 		this.ctx.shadowBlur = 0
 		this.ctx.shadowOffsetY = 0
 	}

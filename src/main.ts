@@ -138,6 +138,10 @@ class GameApp {
 	// Pause & timers
 	private isPaused: boolean = false
 	private pauseStartedAt: number | null = null
+	private lastPlacementX: number | null = null
+	private lastPlacementY: number | null = null
+	private isAutoSelecting: boolean = false
+	private viewCursorPos: { x: number; y: number } = { x: 0, y: 0 }
 	private getHandTimeLimit(): number {
 		// Start at 10s, decrease by 100ms per hand, min 8s
 		return Math.max(8000, 10000 - (this.engine.handGeneration - 1) * 100)
@@ -251,7 +255,9 @@ class GameApp {
 			onDragMove: this.onDragMove.bind(this),
 			onDragEnd: this.onDragEnd.bind(this),
 			onPointerMove: this.onPointerMove.bind(this),
+			getSnappedIndex: () => this.hoveredShapeIndex,
 		})
+		this.input.isMobile = this.isMobile
 
 		this.loadHighScore()
 
@@ -1451,7 +1457,6 @@ class GameApp {
 		if (this.isPaused) this.resumeGame()
 		else this.pauseGame()
 	}
-
 	onPointerMove(x: number, y: number) {
 		if (this.engine.isGameOver || this.isPaused) {
 			this.canvas.style.cursor = ""
@@ -1459,16 +1464,47 @@ class GameApp {
 			return
 		}
 
-		const { trayRect } = this.renderer.layout
-		if (y >= trayRect.y) {
-			const slotW = trayRect.w / 3
-			const index = Math.floor(x / slotW)
-			if (index >= 0 && index < 3 && this.engine.currentShapes[index]) {
-				this.canvas.style.cursor = "var(--custom-cursor-hover)"
-				this.hoveredShapeIndex = index
-				return
-			}
+		if (this.dragShape) {
+			this.canvas.style.cursor = "none"
+			return
 		}
+
+		// Tray area detection - Magnetic Snapping
+		const { trayRect, boardRect } = this.renderer.layout
+		const slotW = trayRect.w / 3
+
+		// SNAP CONDITION: Only snap if in the tray area
+		const snapThresholdY = boardRect.y + boardRect.h
+		if (y < snapThresholdY) {
+			this.canvas.style.cursor = ""
+			this.hoveredShapeIndex = null
+			return
+		}
+
+		const shapes = this.engine.currentShapes
+		const availableIndices = shapes.map((s, i) => (s !== null ? i : -1)).filter((i) => i !== -1)
+
+		if (availableIndices.length > 0) {
+			// Hide native cursor as we are 'snapping' to pieces
+			this.canvas.style.cursor = "none"
+
+			let index = Math.floor(x / slotW)
+			index = Math.max(0, Math.min(2, index))
+
+			// If the direct slot is empty, snap to the nearest available one by pixel distance
+			if (!shapes[index]) {
+				const { shapecenters } = trayRect
+				index = availableIndices.reduce((prev, curr) => {
+					const distPrev = Math.abs(shapecenters[prev].x - x)
+					const distCurr = Math.abs(shapecenters[curr].x - x)
+					return distCurr < distPrev ? curr : prev
+				})
+			}
+
+			this.hoveredShapeIndex = index
+			return
+		}
+
 		this.canvas.style.cursor = ""
 		this.hoveredShapeIndex = null
 	}
@@ -1708,7 +1744,7 @@ class GameApp {
 		const ghostPos = this.ghostPos
 
 		const handRatio = this.handTimerRatio
-		this.renderer.draw(activeEngine, activeEngine, dragShape, dragPos, ghostPos, placeability, this.hoveredShapeIndex, now, handRatio, this.timerPanic)
+		this.renderer.draw(activeEngine, activeEngine, dragShape, dragPos, ghostPos, placeability, this.hoveredShapeIndex, now, handRatio, this.timerPanic, !this.isMobile)
 
 		requestAnimationFrame(this.loop.bind(this))
 	}
