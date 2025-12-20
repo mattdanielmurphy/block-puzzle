@@ -8,25 +8,33 @@ export function getClientIp(req: VercelRequest): string {
 		return clientReportedIp
 	}
 
+	let connectionIp = "UNKNOWN"
 	const forwardedFor = req.headers["x-forwarded-for"]
 	if (forwardedFor) {
 		if (Array.isArray(forwardedFor)) {
-			return forwardedFor[0].split(",")[0].trim()
+			connectionIp = forwardedFor[0].split(",")[0].trim()
+		} else {
+			connectionIp = forwardedFor.split(",")[0].trim()
 		}
-		return forwardedFor.split(",")[0].trim()
-	}
-	// Fallback for requests not behind a proxy
-	let ip = req.socket?.remoteAddress || "UNKNOWN"
-
-	// Normalize localhost IPv6
-	if (ip === "::1") {
-		ip = "127.0.0.1"
+	} else {
+		connectionIp = req.socket?.remoteAddress || "UNKNOWN"
 	}
 
-	// Normalize IPv4-mapped IPv6
-	if (ip.startsWith("::ffff:")) {
-		ip = ip.substring(7)
+	// Normalize connection IP
+	if (connectionIp === "::1") connectionIp = "127.0.0.1"
+	if (connectionIp.startsWith("::ffff:")) connectionIp = connectionIp.substring(7)
+
+	// LOGIC: Prefer IPv6.
+	// If the connection is IPv6 but the reported IP is IPv4, the connection IP is more likely the correct network marker.
+	const isIpv6 = (addr: string) => addr.includes(":")
+
+	if (clientReportedIp && typeof clientReportedIp === "string") {
+		// If we have a reported IP, use it... UNLESS the connection is IPv6 and the reported one is not.
+		if (!isIpv6(clientReportedIp) && isIpv6(connectionIp)) {
+			return connectionIp
+		}
+		return clientReportedIp
 	}
 
-	return ip
+	return connectionIp
 }

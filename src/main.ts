@@ -270,27 +270,34 @@ class GameApp {
 		}
 
 		// Fetch public IP for robust identification (preferring IPv6)
-		fetch("https://api64.ipify.org?format=json")
-			.then((r) => r.json())
-			.then((data) => {
+		const fetchIp = async () => {
+			try {
+				// Try IPv6 specifically first
+				let resp = await fetch("https://api6.ipify.org?format=json").catch(() => null)
+				// Fallback to dual-stack
+				if (!resp || !resp.ok) {
+					resp = await fetch("https://api64.ipify.org?format=json")
+				}
+				const data = await resp.json()
 				this.clientPublicIp = data.ip
 				console.log("Public IP identified:", this.clientPublicIp)
-				// Re-sync if we have a name, now that we have an IP
+
+				// NOW that we have the IP, perform the initial identity sync/check
 				const name = localStorage.getItem("bp_player_name")
 				if (name) {
 					this.syncExistingPlayer()
 				} else {
-					// Attempt to ID immediately if no name
 					this.fetchAndShowPlayerSuggestions(true) // true = fetchOnly
 				}
-			})
-			.catch((e) => {
+			} catch (e) {
 				console.warn("Failed to fetch public IP for identification fallback", e)
 				// Production fallback: Try ID immediately if no name, even without public IP
 				if (!localStorage.getItem("bp_player_name")) {
 					this.fetchAndShowPlayerSuggestions(true) // true = fetchOnly
 				}
-			})
+			}
+		}
+		fetchIp()
 
 		this.input = new InputManager(this.canvas, this.renderer, {
 			onDragStart: this.onDragStart.bind(this),
@@ -391,9 +398,7 @@ class GameApp {
 
 		this.updateUI()
 		this.updatePlayerNameUI()
-		if (!import.meta.env.DEV) {
-			this.syncExistingPlayer()
-		}
+		// Initial sync is now handled inside the fetchIp() async block above to ensure IP is available first
 	}
 
 	private async syncExistingPlayer() {
