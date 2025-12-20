@@ -36,3 +36,7 @@
 - **Powerups (Bombs)**: Bombs are time-based spawns managed by `PowerupManager`. They only spawn when the game is active (after the first piece is placed, the timer has started, and before game over/pause/tutorial).
 - **Modal Component**: Reusable `Modal` class in `src/ui/modal.ts` handles overlays (Settings, Leaderboard, Game Over, Pause). Supports Esc key and outside-click dismissal.
 - **Leaderboard Submission**: The game keeps only the top score per player. At game over, it automatically checks if the score is a personal best. If so, it autosubmits the score. If no player name is set AND the score is a personal best, the user is prompted to choose a name. Manual submission is not available for non-personal best scores.
+- **Player Fingerprinting**: Uses IP address and User Agent to identify returning players even if browser storage is cleared. The `players` table links to `scores` and `chill_scores` via `player_id`. Suggestions are shown at game over for unidentified users.
+- **Developer Controls**: Enabled during development (Vite dev mode). 
+  - `1`, `2`, `3`, `4`: Spawn bombs of increasing size.
+  - `K`: End current game (Kill).

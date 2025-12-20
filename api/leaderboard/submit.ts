@@ -108,14 +108,48 @@ export async function handler(req: VercelRequest, res: VercelResponse) {
 		const table = mode === "chill" ? "chill_scores" : "scores"
 		const trimFunction = mode === "chill" ? "trim_chill_scores" : "trim_verified_scores"
 
-		// E2) Check if a better score already exists for this name
-		const { data: existingEntry } = await supabase
-			.from(table)
-			.select("score")
-			.eq("name", nameV.value)
-			.order("score", { ascending: false })
-			.limit(1)
-			.single()
+		const userAgent = (req.headers["user-agent"] as string) || "UNKNOWN"
+
+		// E1) Ensure player exists and get their ID
+		let playerId: string | null = null
+		const { data: player } = await supabase.from("players").select("id").eq("name", nameV.value).limit(1).maybeSingle()
+
+		if (player) {
+			playerId = player.id
+		} else {
+			// Create new player record
+			const { data: newPlayer, error: createPlayerError } = await supabase.from("players").insert({ name: nameV.value }).select("id").single()
+
+			if (createPlayerError) {
+				console.error("Submit: Error creating player:", createPlayerError)
+			} else {
+				playerId = newPlayer.id
+			}
+		}
+
+		// E1.5) Upsert identity if we have a playerId
+		if (playerId) {
+			await supabase.from("player_identities").upsert(
+				{
+					player_id: playerId,
+					ip_address: clientIp,
+					user_agent: userAgent,
+					last_seen: new Date().toISOString(),
+				},
+				{
+					onConflict: "player_id,ip_address,user_agent",
+				}
+			)
+
+			// Also update last_seen on player
+			await supabase.from("players").update({ last_seen: new Date().toISOString() }).eq("id", playerId)
+		}
+
+		// E2) Check if a better score already exists for this name (we'll stick to name-based PB for now, or should it be player_id based?)
+		// User said: "link it to the scores and chill_scores... it'll use a combination of those [IP, UA] and if the player name is ever cleared..."
+		// This implies we should probably check by player_id if we have it, or still by name?
+		// Usually name is the identifier on the leaderboard.
+		const { data: existingEntry } = await supabase.from(table).select("score").eq("name", nameV.value).order("score", { ascending: false }).limit(1).maybeSingle()
 
 		if (existingEntry && existingEntry.score >= scoreV.value) {
 			return http.json(res, 200, {
@@ -125,13 +159,18 @@ export async function handler(req: VercelRequest, res: VercelResponse) {
 			})
 		}
 
-		// E3) Delete any previous scores for this name (to keep only one per player)
+		// E3) Delete any previous scores for this name (to keep only one per player name)
 		await supabase.from(table).delete().eq("name", nameV.value)
 
 		// F) Insert score directly (no verification)
 		const { data: entry, error: insertError } = await supabase
 			.from(table)
-			.insert({ run_id: runId, name: nameV.value, score: scoreV.value })
+			.insert({
+				run_id: runId,
+				name: nameV.value,
+				score: scoreV.value,
+				player_id: playerId, // Link to player
+			})
 			.select()
 			.single()
 
@@ -142,6 +181,15 @@ export async function handler(req: VercelRequest, res: VercelResponse) {
 			}
 			console.error("Submit: Error inserting verified score:", insertError)
 			return http.errorJson(res, 500, "INTERNAL_SERVER_ERROR", "Could not save score.")
+		}
+
+		// G) Update player's best score in players table
+		if (playerId) {
+			const bestScoreField = mode === "chill" ? "chill_best_score" : "best_score"
+			await supabase
+				.from("players")
+				.update({ [bestScoreField]: scoreV.value })
+				.eq("id", playerId)
 		}
 
 		// G) Trim verified scores to 100

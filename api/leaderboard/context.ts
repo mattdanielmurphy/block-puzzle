@@ -45,12 +45,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
 	try {
 		// 1. Get Top Score
-		const { data: topData } = await supabase
-			.from(table)
-			.select("name, score")
-			.order("score", { ascending: false })
-			.limit(1)
-			.single()
+		const { data: topData, error: topError } = await supabase.from(table).select("name, score").order("score", { ascending: false }).limit(1).maybeSingle()
+
+		if (topError) {
+			console.error("Contextual leaderboard: Error fetching top score:", topError)
+			// We can continue if top score fails, but maybe better to know.
+		}
 
 		const topScore = topData ? { ...topData, rank: 1 } : null
 
@@ -59,23 +59,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 		}
 
 		// 2. Get Player Rank
-		const { count: higherCount } = await supabase
-			.from(table)
-			.select("*", { count: "exact", head: true })
-			.gt("score", playerScore)
+		const { count: higherCount, error: countError } = await supabase.from(table).select("*", { count: "exact", head: true }).gt("score", playerScore)
+
+		if (countError) {
+			console.error("Contextual leaderboard: Error fetching rank:", countError)
+			throw countError // Let the catch block handle it
+		}
 
 		const playerRank = (higherCount ?? 0) + 1
 
 		// 3. Check Personal Best
 		let isPersonalBest = true
 		if (playerName) {
-			const { data: existingScoreData } = await supabase
-				.from(table)
-				.select("score")
-				.eq("name", playerName)
-				.order("score", { ascending: false })
-				.limit(1)
-				.single()
+			const { data: existingScoreData, error: pbError } = await supabase.from(table).select("score").eq("name", playerName).order("score", { ascending: false }).limit(1).maybeSingle()
+
+			if (pbError) {
+				console.error("Contextual leaderboard: Error checking personal best:", pbError)
+			}
 
 			if (existingScoreData && existingScoreData.score >= playerScore) {
 				isPersonalBest = false
@@ -84,20 +84,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
 		// 4. Get surrounding (1 above, 1 below)
 		// Above
-		const { data: aboveData } = await supabase
-			.from(table)
-			.select("name, score")
-			.gt("score", playerScore)
-			.order("score", { ascending: true })
-			.limit(1)
+		const { data: aboveData } = await supabase.from(table).select("name, score").gt("score", playerScore).order("score", { ascending: true }).limit(1)
 
 		// Below
-		const { data: belowData } = await supabase
-			.from(table)
-			.select("name, score")
-			.lt("score", playerScore)
-			.order("score", { ascending: false })
-			.limit(1)
+		const { data: belowData } = await supabase.from(table).select("name, score").lt("score", playerScore).order("score", { ascending: false }).limit(1)
 
 		const surrounding: VerifiedEntry[] = []
 		if (aboveData && aboveData.length > 0) {

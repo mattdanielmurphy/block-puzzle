@@ -46,7 +46,7 @@
 					<div class="hand-timer-fill"></div>
 				</div>
 				<div id="game-over-overlay" class="hidden overlay">
-					<h1>End Game</h1>
+					<h1>Game Over</h1>
 					<p id="game-over-highscore-label" class="hidden">New High Score!</p>
 					<p>Final Score: <span id="final-score">0</span></p>
 					<div id="game-over-quote-container">
@@ -67,7 +67,13 @@
 						<p>If you've played before, please choose the name you chose before. <a href="#" id="see-leaderboard-link">See Leaderboard</a></p>
 					</div>
 
-					<div id="player-name-submission-container">
+					<div id="player-suggestions-container" class="hidden">
+						<p>Are you one of these players?</p>
+						<div id="player-suggestions-list"></div>
+						<p style="font-size: 0.8rem; opacity: 0.7; margin-top: 10px">or enter a new name below:</p>
+					</div>
+
+					<div id="player-name-submission-container" class="hidden">
 						<input type="text" id="player-name-input" placeholder="Enter your name" />
 						<button id="submit-name-btn" class="primary-btn">Submit</button>
 					</div>

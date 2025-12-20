@@ -327,6 +327,53 @@ canvas {
     margin: 10px 0;
 }
 
+#player-suggestions-container {
+    background: rgba(126, 224, 244, 0.05);
+    border: 1px solid rgba(126, 224, 244, 0.15);
+    border-radius: 12px;
+    padding: 15px;
+    margin: 10px 0;
+    width: 85%;
+    text-align: center;
+}
+
+#player-suggestions-container p {
+    margin: 0;
+    font-size: 0.9rem;
+    color: #8aa2c8;
+}
+
+#player-suggestions-list {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+    margin: 12px 0;
+}
+
+.suggestion-btn {
+    background: rgba(126, 224, 244, 0.1);
+    border: 1px solid rgba(126, 224, 244, 0.4);
+    color: var(--accent-color);
+    padding: 6px 14px;
+    border-radius: 15px;
+    font-size: 0.9rem;
+    cursor: var(--custom-cursor-hover);
+    transition: all 0.2s;
+    font-weight: 500;
+}
+
+.suggestion-btn:hover {
+    background: var(--accent-color);
+    color: #050815;
+    border-color: var(--accent-color);
+    transform: translateY(-1px);
+}
+
+.suggestion-btn:active {
+    transform: translateY(0);
+}
+
 #player-name-submission-container {
     margin: 15px 0;
     width: 85%;

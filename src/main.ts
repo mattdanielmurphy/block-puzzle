@@ -119,7 +119,7 @@ class GameApp {
 
 	// Debug/testing flags
 	private readonly DEBUG_SPAWN_POWERUP_ON_START = false
-	private readonly DEBUG_ENABLE_POWERUP_KEYS = false
+	private readonly DEBUG_ENABLE_POWERUP_KEYS = import.meta.env.DEV
 
 	// Snap settings
 	private readonly SNAP_THRESHOLD = 3
@@ -173,16 +173,27 @@ class GameApp {
 	private playerNameDisplay: HTMLDivElement | null = null
 	private displayPlayerNameSpan: HTMLSpanElement | null = null
 	private submitNameBtn: HTMLButtonElement | null = null
+	private playerSuggestionsContainer: HTMLDivElement | null = null
+	private playerSuggestionsList: HTMLDivElement | null = null
 
 	// Leaderboard State
 	private lastSubmittedEntry: { name: string; score: number } | null = null
 	private contextualLeaderboardData: any = null
+
+	// Dev-only public IP override
+	private devPublicIp: string | null = null
+
+	// Player suggestions cache
+	private cachedPlayerSuggestions: Array<{ id: string; name: string; best_score: number; chill_best_score: number }> | null = null
+	private remoteBestScore: number = 0
+	private remoteChillBestScore: number = 0
 
 	// Modals
 	private settingsModal!: Modal
 	private leaderboardModal!: Modal
 	private gameOverModal!: Modal
 	private pauseModal!: Modal
+	private gameOverRevealRequested: boolean = false
 
 	constructor() {
 		this.displayVersion()
@@ -206,6 +217,8 @@ class GameApp {
 		this.playerNameDisplay = document.getElementById("player-name-display") as HTMLDivElement
 		this.displayPlayerNameSpan = document.getElementById("display-player-name") as HTMLSpanElement
 		this.submitNameBtn = document.getElementById("submit-name-btn") as HTMLButtonElement
+		this.playerSuggestionsContainer = document.getElementById("player-suggestions-container") as HTMLDivElement
+		this.playerSuggestionsList = document.getElementById("player-suggestions-list") as HTMLDivElement
 
 		// Generate runId and seed using crypto.getRandomValues()
 		this.runId = this.generateRunId()
@@ -246,11 +259,38 @@ class GameApp {
 					case "4":
 						this.engine.spawnPowerupOfType(PowerupType.BOMB_MEGA, now)
 						break
+					case "k":
+						this.endGame()
+						break
 					default:
 						return
 				}
 				e.preventDefault()
 			})
+		}
+
+		// Dev mode: fetch public IP to simulate external user
+		if (import.meta.env.DEV) {
+			fetch("https://api64.ipify.org?format=json")
+				.then((r) => r.json())
+				.then((data) => {
+					this.devPublicIp = data.ip
+					console.log("Dev Mode: Using public IP override:", this.devPublicIp)
+					// Re-sync if we have a name, now that we have an IP
+					const name = localStorage.getItem("bp_player_name")
+					if (name) {
+						this.syncExistingPlayer()
+					} else {
+						// Attempt to ID immediately if no name
+						this.fetchAndShowPlayerSuggestions(true) // true = fetchOnly
+					}
+				})
+				.catch((e) => console.warn("Dev Mode: Failed to fetch public IP for override", e))
+		} else {
+			// Production: Try ID immediately if no name
+			if (!localStorage.getItem("bp_player_name")) {
+				this.fetchAndShowPlayerSuggestions(true) // true = fetchOnly
+			}
 		}
 
 		this.input = new InputManager(this.canvas, this.renderer, {
@@ -352,6 +392,47 @@ class GameApp {
 
 		this.updateUI()
 		this.updatePlayerNameUI()
+		if (!import.meta.env.DEV) {
+			this.syncExistingPlayer()
+		}
+	}
+
+	private async syncExistingPlayer() {
+		const playerName = localStorage.getItem("bp_player_name")
+		if (!playerName || playerName.trim() === "") return
+
+		try {
+			// Use apiFetch to ensure dev IP is sent
+			const resp = await this.apiFetch("/api/players/sync", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ name: playerName.trim() }),
+			})
+			if (resp.ok) {
+				const data = await resp.json()
+				if (data.ok) {
+					this.remoteBestScore = data.best_score || 0
+					this.remoteChillBestScore = data.chill_best_score || 0
+					console.log(`[syncExistingPlayer] Player successfully synced. Best: ${this.remoteBestScore}, Chill Best: ${this.remoteChillBestScore}`)
+				}
+			}
+		} catch (e) {
+			console.error("[syncExistingPlayer] Failed to sync player:", e)
+		}
+	}
+
+	/**
+	 * Wrapper for fetch that injects dev headers if needed
+	 */
+	private async apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+		if (this.devPublicIp) {
+			init = init || {}
+			const headers = new Headers(init.headers || {})
+			headers.set("x-dev-public-ip", this.devPublicIp)
+			init.headers = headers
+			console.log(`[apiFetch] Request to ${input.toString()} with dev IP: ${this.devPublicIp}`)
+		}
+		return fetch(input, init)
 	}
 
 	displayVersion() {
@@ -414,8 +495,11 @@ class GameApp {
 			this.submitNameBtn.disabled = state === "submitting"
 		}
 
+		const submissionContainer = document.getElementById("player-name-submission-container")
+
 		switch (state) {
 			case "idle":
+				if (submissionContainer) submissionContainer.classList.remove("hidden")
 				if (statusEl) {
 					statusEl.textContent = ""
 					statusEl.classList.add("hidden")
@@ -426,6 +510,7 @@ class GameApp {
 				}
 				break
 			case "submitting":
+				if (submissionContainer) submissionContainer.classList.add("hidden")
 				if (statusEl) {
 					statusEl.textContent = "Submitting score..."
 					statusEl.classList.remove("hidden")
@@ -436,6 +521,7 @@ class GameApp {
 				}
 				break
 			case "success":
+				if (submissionContainer) submissionContainer.classList.add("hidden")
 				if (statusEl) {
 					statusEl.textContent = "Score submitted!"
 					statusEl.classList.remove("hidden")
@@ -443,6 +529,7 @@ class GameApp {
 				// ranking is populated asynchronously once leaderboard is fetched
 				break
 			case "error":
+				if (submissionContainer) submissionContainer.classList.remove("hidden")
 				if (statusEl) {
 					statusEl.textContent = message || "Failed to submit score. You can try submitting again."
 					statusEl.classList.remove("hidden")
@@ -976,7 +1063,7 @@ class GameApp {
 				mode: this.chillMode ? "chill" : "normal",
 			}
 
-			const response = await fetch("/api/leaderboard/submit", {
+			const response = await this.apiFetch("/api/leaderboard/submit", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify(payload),
@@ -1020,8 +1107,9 @@ class GameApp {
 
 				if (data && typeof data === "object") {
 					if (data.status === "NOT_PERSONAL_BEST") {
-						this.updateSubmissionUI("idle", "Not a personal best. Score not saved to leaderboard.")
-						// We still mark it as "submitted" for this run so we don't keep trying
+						this.updateSubmissionUI("idle", "Not a personal best.")
+						const submissionContainer = document.getElementById("player-name-submission-container")
+						if (submissionContainer) submissionContainer.classList.add("hidden")
 						return
 					}
 
@@ -1044,6 +1132,13 @@ class GameApp {
 					}
 				}
 				this.updateSubmissionUI("success")
+
+				// Update local remote best score record
+				if (this.chillMode) {
+					this.remoteChillBestScore = Math.max(this.remoteChillBestScore, name === String((data as any).entry?.name ?? name) ? Number((data as any).entry?.score ?? this.engine.score) : 0)
+				} else {
+					this.remoteBestScore = Math.max(this.remoteBestScore, name === String((data as any).entry?.name ?? name) ? Number((data as any).entry?.score ?? this.engine.score) : 0)
+				}
 
 				if (showImmediately) {
 					// Hide submission UI
@@ -1096,12 +1191,11 @@ class GameApp {
 				this.displayPlayerNameSpan.textContent = playerName
 			}
 			if (this.playerNameInput) {
-				this.playerNameInput.classList.remove("hidden") // Keep input visible so they can change it if they want?
-				// The prompt says "if the player hasn't set their name...".
-				// If they HAVE set it, we just show the input with their name.
+				this.playerNameInput.classList.add("hidden") // Hide input when name is set
 				this.playerNameInput.value = playerName
 			}
 			this.playerNameMissingContainer?.classList.add("hidden")
+			this.playerSuggestionsContainer?.classList.add("hidden")
 		} else {
 			// No name: show input, clear input
 			this.playerNameDisplay?.classList.add("hidden")
@@ -1110,7 +1204,94 @@ class GameApp {
 				this.playerNameInput.value = ""
 			}
 			this.playerNameMissingContainer?.classList.remove("hidden")
+			// We don't automatically show suggestions here; it's handled in updateUI at game over
 		}
+	}
+
+	private async fetchAndShowPlayerSuggestions(fetchOnly: boolean = false) {
+		console.log(`[fetchAndShowPlayerSuggestions] Triggered. fetchOnly: ${fetchOnly}`)
+
+		// If we already have cached suggestions, use them immediately
+		if (!fetchOnly && this.cachedPlayerSuggestions && this.cachedPlayerSuggestions.length > 0) {
+			console.log("[fetchAndShowPlayerSuggestions] Using cached suggestions.")
+			this.renderPlayerSuggestions(this.cachedPlayerSuggestions)
+			return
+		}
+
+		if (!this.playerSuggestionsContainer || !this.playerSuggestionsList) {
+			console.warn("[fetchAndShowPlayerSuggestions] Containers missing required elements.")
+			return
+		}
+
+		try {
+			const resp = await this.apiFetch("/api/players/identify")
+			console.log("[fetchAndShowPlayerSuggestions] Response status:", resp.status)
+			if (!resp.ok) return
+			const data = await resp.json()
+
+			if (data.ok && data.players && data.players.length > 0) {
+				console.log(
+					`[fetchAndShowPlayerSuggestions] Identified ${data.players.length} players. Scores:`,
+					data.players.map((p: any) => `${p.name}: ${p.best_score}`)
+				)
+				this.cachedPlayerSuggestions = data.players
+				if (!fetchOnly) {
+					this.renderPlayerSuggestions(data.players)
+				} else {
+					console.log("[fetchAndShowPlayerSuggestions] Suggestions cached for later.")
+				}
+			} else {
+				this.cachedPlayerSuggestions = []
+				if (!fetchOnly) this.playerSuggestionsContainer.classList.add("hidden")
+			}
+		} catch (e) {
+			console.error("[fetchAndShowPlayerSuggestions] Error:", e)
+		}
+	}
+
+	private renderPlayerSuggestions(players: Array<{ id: string; name: string; best_score: number; chill_best_score: number }>) {
+		if (!this.playerSuggestionsContainer || !this.playerSuggestionsList) return
+
+		this.playerSuggestionsList.innerHTML = ""
+		players.forEach((player) => {
+			const btn = document.createElement("button")
+			btn.className = "suggestion-btn"
+			btn.textContent = player.name
+			btn.addEventListener("click", () => {
+				if (this.playerNameInput) {
+					this.playerNameInput.value = player.name
+					localStorage.setItem("bp_player_name", player.name)
+
+					// Update cached best scores for this identified player
+					this.remoteBestScore = player.best_score || 0
+					this.remoteChillBestScore = player.chill_best_score || 0
+
+					// Hide suggestion UI and submission container immediately
+					this.playerNameMissingContainer?.classList.add("hidden")
+					this.playerSuggestionsContainer?.classList.add("hidden")
+					if (this.playerNameSubmissionContainer) {
+						this.playerNameSubmissionContainer.classList.add("hidden")
+					}
+
+					this.updatePlayerNameUI()
+					this.syncExistingPlayer()
+
+					// If game over loop is waiting, submit immediately ONLY IF it's a PB
+					if (this.engine.isGameOver && !this.scoreSubmitted) {
+						const currentBest = this.chillMode ? this.remoteChillBestScore : this.remoteBestScore
+						if (this.engine.score > currentBest) {
+							this.attemptScoreSubmission()
+						} else {
+							// If not a PB for this player, don't submit and don't show the leaderboard
+							// We also don't call updateSubmissionUI("idle") because that would re-show the container
+							console.log(`[renderPlayerSuggestions] Score ${this.engine.score} is not a PB for ${player.name}. Keeping UI hidden.`)
+						}
+					}
+				}
+			})
+			this.playerSuggestionsList?.appendChild(btn)
+		})
+		this.playerSuggestionsContainer?.classList.remove("hidden")
 	}
 
 	updateUI() {
@@ -1180,6 +1361,7 @@ class GameApp {
 				if (miniLeaderboard) miniLeaderboard.classList.add("hidden")
 				if (statusContainer) statusContainer.classList.add("hidden")
 				if (nameMissingContainer) nameMissingContainer.classList.add("hidden")
+				if (this.playerSuggestionsContainer) this.playerSuggestionsContainer.classList.add("hidden")
 
 				if (this.gameOverActionsTimeout) clearTimeout(this.gameOverActionsTimeout)
 
@@ -1190,25 +1372,12 @@ class GameApp {
 				const playerName = localStorage.getItem("bp_player_name")
 				const currentScore = this.engine.score
 
+				this.gameOverRevealRequested = false
 				// Reveal actions exactly after delay
 				this.gameOverActionsTimeout = setTimeout(() => {
+					this.gameOverRevealRequested = true
 					if (gameOverActions) gameOverActions.classList.remove("hidden")
-
-					if (currentScore > 0 && this.scoreSubmitted) {
-						this.fetchAndRenderMiniLeaderboard()
-					} else if (currentScore > 0 && !this.scoreSubmitted) {
-						// Only show name input if it is a personal best and we don't have a name yet.
-						// This handles the case where the PB check finished BEFORE the timeout.
-						const isPB = this.contextualLeaderboardData?.isPersonalBest
-						if (isPB && (!playerName || playerName.trim() === "")) {
-							if (this.playerNameSubmissionContainer) {
-								this.playerNameSubmissionContainer.classList.remove("hidden")
-							}
-							if (nameMissingContainer) {
-								nameMissingContainer.classList.remove("hidden")
-							}
-						}
-					}
+					this.tryShowNameSubmissionUI()
 				}, delay)
 
 				if (currentScore > 0 && !this.scoreSubmitted) {
@@ -1227,6 +1396,13 @@ class GameApp {
 		const miniStatusText = document.getElementById("mini-leaderboard-status")
 
 		try {
+			// Fast check using locally known remote best if available
+			const currentRemoteBest = this.chillMode ? this.remoteChillBestScore : this.remoteBestScore
+			if (currentRemoteBest > 0 && score <= currentRemoteBest) {
+				console.log(`[checkPBAndSubmit] Fast-path: Score ${score} <= Remote Best ${currentRemoteBest}. Not a PB.`)
+				return
+			}
+
 			// Wait for the contextual data (already fetching in parallel)
 			const context = await contextPromise
 			const isPB = context && context.isPersonalBest
@@ -1239,17 +1415,40 @@ class GameApp {
 					// Autosubmit and show the mini-leaderboard when done
 					this.attemptScoreSubmission()
 				} else {
-					// PB but no name - show input IF the delay has passed
-					const gameOverActions = document.getElementById("game-over-actions")
-					const isRevealed = gameOverActions && !gameOverActions.classList.contains("hidden")
-					if (isRevealed) {
-						if (this.playerNameSubmissionContainer) this.playerNameSubmissionContainer.classList.remove("hidden")
-						if (this.playerNameMissingContainer) this.playerNameMissingContainer.classList.remove("hidden")
-					}
+					// PB but no name - try to show input
+					this.tryShowNameSubmissionUI()
 				}
+			} else {
+				// Not a personal best - try to show mini-leaderboard
+				this.tryShowNameSubmissionUI()
 			}
 		} catch (e) {
 			console.error("Failed to check personal best status:", e)
+		}
+	}
+
+	private tryShowNameSubmissionUI() {
+		const playerName = localStorage.getItem("bp_player_name")
+		const currentScore = this.engine.score
+		const isPB = this.contextualLeaderboardData?.isPersonalBest
+
+		console.log(`[tryShowNameSubmissionUI] Thinking... revealRequested: ${this.gameOverRevealRequested}, score: ${currentScore}, isPB: ${isPB}, scoreSubmitted: ${this.scoreSubmitted}`)
+
+		// Only show anything if the initial quote delay has passed
+		if (!this.gameOverRevealRequested) return
+
+		if (currentScore > 0 && this.scoreSubmitted) {
+			this.fetchAndRenderMiniLeaderboard()
+		} else if (currentScore > 0 && !this.scoreSubmitted) {
+			// We only proceed if we definitely KNOW if it is a PB or not (isPB is boolean, not null/undefined)
+			if (isPB === true && (!playerName || playerName.trim() === "")) {
+				console.log("[tryShowNameSubmissionUI] Personal Best + No Name. Showing submission UI.")
+				if (this.playerNameSubmissionContainer) this.playerNameSubmissionContainer.classList.remove("hidden")
+				if (this.playerNameMissingContainer) this.playerNameMissingContainer.classList.remove("hidden")
+				this.fetchAndShowPlayerSuggestions()
+			} else if (isPB === false) {
+				console.log("[tryShowNameSubmissionUI] Not a Personal Best. Skipping leaderboard.")
+			}
 		}
 	}
 
@@ -1271,7 +1470,7 @@ class GameApp {
 		if (name) {
 			url += `&name=${encodeURIComponent(name)}`
 		}
-		const resp = await fetch(url)
+		const resp = await this.apiFetch(url)
 		if (!resp.ok) throw new Error("Failed to fetch contextual leaderboard")
 		return await resp.json()
 	}
@@ -1281,7 +1480,7 @@ class GameApp {
 		if (!miniLeaderboard) return
 
 		try {
-			const context = this.contextualLeaderboardData || (await this.fetchContextualLeaderboardScores(this.engine.score))
+			const context = this.contextualLeaderboardData || (await this.fetchContextualLeaderboardScores(this.engine.score, null)) // Pass null for name if not available or already cleared
 			this.renderMiniLeaderboardFromContext(context)
 		} catch (e) {
 			console.error("Failed to fetch mini leaderboard:", e)
@@ -1434,7 +1633,7 @@ class GameApp {
 			this.timerPanic = remaining <= 3000 && remaining > 0
 			// If timer hits zero and there are still blocks in the tray, end the game
 			if (remaining <= 0 && this.engine.currentShapes.some((s) => s !== null)) {
-				this.endGameDueToTimeout()
+				this.endGame()
 				this.updateCountdownUI(0)
 				return
 			}
@@ -1446,7 +1645,7 @@ class GameApp {
 		}
 	}
 
-	private endGameDueToTimeout() {
+	private endGame() {
 		this.engine.isGameOver = true
 		this.handDeadline = null
 		this.updateUI()
