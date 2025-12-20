@@ -30,6 +30,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 		// 2. Search player_identities for matching IP or User Agent
 		// We join with the players table to get the name and scores
 		let query = supabase.from("player_identities").select(`
+				ip_address,
+				user_agent,
 				last_seen,
 				players (
 					id,
@@ -52,25 +54,48 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 			throw error
 		}
 
-		// 3. Extract and uniqueify the players found
-		const playersMap = new Map<string, any>()
+		// 3. Score and uniqueify the players found
+		// Scoring:
+		// +10: Exact IP match
+		// +5: User Agent match
+		// +2: Partial IP (Network) match
+		const playersMap = new Map<string, { id: string; name: string; score: number; best_score: number; chill_best_score: number; last_seen: string }>()
 
 		for (const identity of identities || []) {
 			const p: any = identity.players
-			if (p && !playersMap.has(p.id)) {
+			if (!p) continue
+
+			let matchScore = 0
+			if (identity.ip_address === clientIp) matchScore += 10
+			else if (partialIpMatch && identity.ip_address.startsWith(partialIpMatch)) matchScore += 2
+
+			if (identity.user_agent === userAgent) matchScore += 5
+
+			const existing = playersMap.get(p.id)
+			if (!existing || matchScore > existing.score) {
 				playersMap.set(p.id, {
 					id: p.id,
 					name: p.name,
+					score: matchScore,
 					best_score: p.best_score || 0,
 					chill_best_score: p.chill_best_score || 0,
 					last_seen: identity.last_seen,
 				})
+			} else if (existing && matchScore === existing.score) {
+				// If scores are equal, keep the most recently seen one
+				if (new Date(identity.last_seen) > new Date(existing.last_seen)) {
+					existing.last_seen = identity.last_seen
+				}
 			}
 		}
 
-		const uniquePlayers = Array.from(playersMap.values()).sort((a, b) => new Date(b.last_seen).getTime() - new Date(a.last_seen).getTime())
+		// Sort by match score (primary) and last_seen (secondary)
+		const uniquePlayers = Array.from(playersMap.values()).sort((a, b) => {
+			if (b.score !== a.score) return b.score - a.score
+			return new Date(b.last_seen).getTime() - new Date(a.last_seen).getTime()
+		})
 
-		return http.json(res, 200, { ok: true, players: uniquePlayers.slice(0, 3) })
+		return http.json(res, 200, { ok: true, players: uniquePlayers.slice(0, 10) })
 	} catch (e: any) {
 		console.error("Identify Player: Uncaught error:", e)
 		return http.errorJson(res, 500, "INTERNAL_SERVER_ERROR", "An unexpected error occurred.")

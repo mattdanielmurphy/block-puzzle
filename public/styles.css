@@ -345,10 +345,28 @@ canvas {
 
 #player-suggestions-list {
     display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 8px;
+    flex-direction: column;
+    gap: 6px;
     margin: 12px 0;
+    max-height: 180px;
+    overflow-y: auto;
+    padding: 4px;
+    /* Custom Scrollbar for sleek look */
+    scrollbar-width: thin;
+    scrollbar-color: var(--accent-color) transparent;
+}
+
+#player-suggestions-list::-webkit-scrollbar {
+    width: 4px;
+}
+
+#player-suggestions-list::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+#player-suggestions-list::-webkit-scrollbar-thumb {
+    background: var(--accent-color);
+    border-radius: 10px;
 }
 
 .suggestion-btn {
