@@ -6,6 +6,7 @@ import { GameRenderer } from "./ui/renderer"
 import { InputManager } from "./ui/input"
 import { Modal } from "./ui/modal"
 import { PowerupType } from "./engine/powerups"
+import { Simulator } from "./simulation/simulator"
 import { THEME } from "./ui/theme"
 import { TutorialManager } from "./ui/tutorial"
 import { VERSION } from "./version"
@@ -2165,5 +2166,10 @@ class GameApp {
 // Boot
 window.onload = () => {
 	inject()
-	new GameApp()
+	if (window.location.pathname === "/simulate") {
+		const canvas = document.getElementById("game-canvas") as HTMLCanvasElement
+		new Simulator(canvas)
+	} else {
+		new GameApp()
+	}
 }
