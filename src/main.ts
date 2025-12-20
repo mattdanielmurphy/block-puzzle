@@ -180,8 +180,8 @@ class GameApp {
 	private lastSubmittedEntry: { name: string; score: number } | null = null
 	private contextualLeaderboardData: any = null
 
-	// Dev-only public IP override
-	private devPublicIp: string | null = null
+	// Public IP for consistent identification (especially IPv6)
+	private clientPublicIp: string | null = null
 
 	// Player suggestions cache
 	private cachedPlayerSuggestions: Array<{ id: string; name: string; best_score: number; chill_best_score: number }> | null = null
@@ -269,29 +269,28 @@ class GameApp {
 			})
 		}
 
-		// Dev mode: fetch public IP to simulate external user
-		if (import.meta.env.DEV) {
-			fetch("https://api64.ipify.org?format=json")
-				.then((r) => r.json())
-				.then((data) => {
-					this.devPublicIp = data.ip
-					console.log("Dev Mode: Using public IP override:", this.devPublicIp)
-					// Re-sync if we have a name, now that we have an IP
-					const name = localStorage.getItem("bp_player_name")
-					if (name) {
-						this.syncExistingPlayer()
-					} else {
-						// Attempt to ID immediately if no name
-						this.fetchAndShowPlayerSuggestions(true) // true = fetchOnly
-					}
-				})
-				.catch((e) => console.warn("Dev Mode: Failed to fetch public IP for override", e))
-		} else {
-			// Production: Try ID immediately if no name
-			if (!localStorage.getItem("bp_player_name")) {
-				this.fetchAndShowPlayerSuggestions(true) // true = fetchOnly
-			}
-		}
+		// Fetch public IP for robust identification (preferring IPv6)
+		fetch("https://api64.ipify.org?format=json")
+			.then((r) => r.json())
+			.then((data) => {
+				this.clientPublicIp = data.ip
+				console.log("Public IP identified:", this.clientPublicIp)
+				// Re-sync if we have a name, now that we have an IP
+				const name = localStorage.getItem("bp_player_name")
+				if (name) {
+					this.syncExistingPlayer()
+				} else {
+					// Attempt to ID immediately if no name
+					this.fetchAndShowPlayerSuggestions(true) // true = fetchOnly
+				}
+			})
+			.catch((e) => {
+				console.warn("Failed to fetch public IP for identification fallback", e)
+				// Production fallback: Try ID immediately if no name, even without public IP
+				if (!localStorage.getItem("bp_player_name")) {
+					this.fetchAndShowPlayerSuggestions(true) // true = fetchOnly
+				}
+			})
 
 		this.input = new InputManager(this.canvas, this.renderer, {
 			onDragStart: this.onDragStart.bind(this),
@@ -425,12 +424,12 @@ class GameApp {
 	 * Wrapper for fetch that injects dev headers if needed
 	 */
 	private async apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-		if (this.devPublicIp) {
+		if (this.clientPublicIp) {
 			init = init || {}
 			const headers = new Headers(init.headers || {})
-			headers.set("x-dev-public-ip", this.devPublicIp)
+			headers.set("x-client-public-ip", this.clientPublicIp)
 			init.headers = headers
-			console.log(`[apiFetch] Request to ${input.toString()} with dev IP: ${this.devPublicIp}`)
+			console.log(`[apiFetch] Request to ${input.toString()} with client IP: ${this.clientPublicIp}`)
 		}
 		return fetch(input, init)
 	}

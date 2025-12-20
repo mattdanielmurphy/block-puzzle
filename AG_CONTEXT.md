@@ -35,8 +35,11 @@
 - **Hand Timer**: A per-hand countdown timer that resets when a new hand is dealt. It starts at 10 seconds and progressively quickens to a minimum of 8 seconds (100ms faster per hand). If the timer runs out, the game ends.
 - **Powerups (Bombs)**: Bombs are time-based spawns managed by `PowerupManager`. They only spawn when the game is active (after the first piece is placed, the timer has started, and before game over/pause/tutorial).
 - **Modal Component**: Reusable `Modal` class in `src/ui/modal.ts` handles overlays (Settings, Leaderboard, Game Over, Pause). Supports Esc key and outside-click dismissal.
-- **Leaderboard Submission**: The game keeps only the top score per player. At game over, it automatically checks if the score is a personal best. If so, it autosubmits the score. If no player name is set AND the score is a personal best, the user is prompted to choose a name. Manual submission is not available for non-personal best scores.
-- **Player Fingerprinting**: Uses IP address and User Agent to identify returning players even if browser storage is cleared. The `players` table links to `scores` and `chill_scores` via `player_id`. Suggestions are shown at game over for unidentified users.
+- **Leaderboard Submission**: High scores are tracked per player. At game over, the system performs a conditional check (via `checkPBAndSubmit`) against the player's remote personal best. The submission UI (name input/suggestions) is only revealed if a new record is achieved, respecting a reading delay for the game-over quote.
+- **Player Identity & Fingerprinting**: Uses a dedicated `player_identities` table to track multiple fingerprints (IP + User Agent) per `player_id`. 
+  - **Home Network Identification**: Employs partial IP matching (64-bit IPv6 prefix / 24-bit IPv4 subnet) to recognize players across different devices on the same local network.
+  - **Automatic Sync**: New identities are automatically registered/updated during sync or score submission.
 - **Developer Controls**: Enabled during development (Vite dev mode). 
   - `1`, `2`, `3`, `4`: Spawn bombs of increasing size.
   - `K`: End current game (Kill).
+  - **IP Spoofing**: Dev mode fetches the actual public IP to test identification of remote devices.

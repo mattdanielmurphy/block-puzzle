@@ -1,12 +1,11 @@
 import type { VercelRequest } from "@vercel/node"
 
 export function getClientIp(req: VercelRequest): string {
-	// ALLOW DEV OVERRIDE
-	// This header is set by the frontend in dev mode to simulate the real public IP
-	// instead of localhost (127.0.0.1)
-	const devIp = req.headers["x-dev-public-ip"]
-	if (devIp && typeof devIp === "string") {
-		return devIp
+	// Prioritize client-reported public IP (fetched via client-side ipify)
+	// This helps ensure we get IPv6 consistently if available, which is better for network matching.
+	const clientReportedIp = req.headers["x-client-public-ip"]
+	if (clientReportedIp && typeof clientReportedIp === "string") {
+		return clientReportedIp
 	}
 
 	const forwardedFor = req.headers["x-forwarded-for"]
