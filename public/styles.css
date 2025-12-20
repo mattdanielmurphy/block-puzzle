@@ -370,6 +370,9 @@ canvas {
 }
 
 .suggestion-btn {
+    display: flex;
+    justify-content: center;
+    align-items: center;
     background: rgba(126, 224, 244, 0.1);
     border: 1px solid rgba(126, 224, 244, 0.4);
     color: var(--accent-color);
@@ -379,6 +382,34 @@ canvas {
     cursor: var(--custom-cursor-hover);
     transition: all 0.2s;
     font-weight: 500;
+    min-width: 64px;
+    min-height: 32px;
+}
+
+.suggestion-btn.btn-submitting {
+    padding: 0;
+    /* Center spinner perfectly */
+}
+
+@keyframes spin {
+    0% {
+        transform: rotate(0deg);
+    }
+
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+.spinner {
+    flex-shrink: 0;
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 3px solid rgba(255, 255, 255, 0.35);
+    border-radius: 50%;
+    border-top: 3px solid #ffffff;
+    animation: spin 0.75s linear infinite;
 }
 
 .suggestion-btn:hover {
@@ -1096,32 +1127,13 @@ footer {
     }
 }
 
-@keyframes spin {
-    0% {
-        transform: rotate(0deg);
-    }
-
-    100% {
-        transform: rotate(360deg);
-    }
-}
-
-.spinner {
-    display: block;
-    width: 18px;
-    height: 18px;
-    border: 2px solid rgba(255, 255, 255, 0.2);
-    border-radius: 50%;
-    border-top-color: #ffffff;
-    animation: spin 0.8s linear infinite;
-}
-
 #submit-name-btn.btn-submitting {
     display: flex;
     align-items: center;
     justify-content: center;
     min-width: 80px;
-    min-height: 44px;
+    height: 100%;
+    /* Match the height of the container/input */
     padding: 0;
     pointer-events: none;
     opacity: 0.8;

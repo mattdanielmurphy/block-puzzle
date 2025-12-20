@@ -528,7 +528,10 @@ class GameApp {
 
 		switch (state) {
 			case "idle":
-				if (this.playerNameSubmissionContainer) this.playerNameSubmissionContainer.classList.remove("hidden")
+				// Only show the container if we don't have a message (manual entry start)
+				// or if we explicitly want to show it.
+				// If we have a message, it's often a "Score not submitted" case which hides it.
+				if (this.playerNameSubmissionContainer && !message) this.playerNameSubmissionContainer.classList.remove("hidden")
 				if (statusEl) {
 					if (message) {
 						statusEl.textContent = message
@@ -1237,8 +1240,12 @@ class GameApp {
 				this.playerNameInput.classList.add("hidden") // Hide input when name is set
 				this.playerNameInput.value = playerName
 			}
-			this.playerNameMissingContainer?.classList.add("hidden")
-			this.playerSuggestionsContainer?.classList.add("hidden")
+			if (this.submitNameBtn) {
+				this.submitNameBtn.classList.add("hidden") // Hide submit button when name is set
+			}
+			if (this.playerNameSubmissionContainer) {
+				this.playerNameSubmissionContainer.classList.add("hidden")
+			}
 		} else {
 			// No name: show input, clear input
 			this.playerNameDisplay?.classList.add("hidden")
@@ -1311,26 +1318,32 @@ class GameApp {
 						chill_best_score: player.chill_best_score,
 					})
 
-					// Hide suggestion UI and submission container immediately
-					this.playerNameMissingContainer?.classList.add("hidden")
-					this.playerSuggestionsContainer?.classList.add("hidden")
-					if (this.playerNameSubmissionContainer) {
-						this.playerNameSubmissionContainer.classList.add("hidden")
-					}
+					// Instead of hiding immediately, show loading in the button
+					btn.innerHTML = '<span class="spinner"></span>'
+					btn.classList.add("btn-submitting")
+					// Disable all buttons in the list to prevent double clicks
+					const allBtns = this.playerSuggestionsList?.querySelectorAll("button")
+					allBtns?.forEach((b) => ((b as HTMLButtonElement).disabled = true))
 
 					this.updatePlayerNameUI()
 					this.syncExistingPlayer()
 
-					// If game over loop is waiting, submit immediately ONLY IF it's a PB
+					// If game over loop is waiting, check PB and submit or show status
 					if (this.engine.isGameOver && !this.scoreSubmitted) {
-						const currentBest = this.chillMode ? this.remoteChillBestScore : this.remoteBestScore
-						if (this.engine.score > currentBest) {
-							this.attemptScoreSubmission()
-						} else {
-							// If not a PB for this player, don't submit and don't show the leaderboard
-							// We also don't call updateSubmissionUI("idle") because that would re-show the container
-							console.log(`[renderPlayerSuggestions] Score ${this.engine.score} is not a PB for ${player.name}. Keeping UI hidden.`)
-						}
+						const contextPromise = this.fetchContextualLeaderboard(this.engine.score)
+						this.checkPBAndSubmit(this.engine.score, player.name, contextPromise, true, true).then(() => {
+							// After check is done, hide the suggestions
+							this.playerNameMissingContainer?.classList.add("hidden")
+							this.playerSuggestionsContainer?.classList.add("hidden")
+							if (this.playerNameSubmissionContainer) {
+								this.playerNameSubmissionContainer.classList.add("hidden")
+							}
+						})
+						console.log(`[renderPlayerSuggestions] Selection of ${player.name} handled via checkPBAndSubmit (silent).`)
+					} else {
+						// Fallback if not game over (unlikely)
+						this.playerNameMissingContainer?.classList.add("hidden")
+						this.playerSuggestionsContainer?.classList.add("hidden")
 					}
 				}
 			})
@@ -1435,10 +1448,10 @@ class GameApp {
 		}
 	}
 
-	private async checkPBAndSubmit(score: number, playerName: string | null, contextPromise: Promise<any>, isManual: boolean = false) {
+	private async checkPBAndSubmit(score: number, playerName: string | null, contextPromise: Promise<any>, isManual: boolean = false, silent: boolean = false) {
 		if (this.scoreSubmitted) return
 
-		if (isManual) {
+		if (isManual && !silent) {
 			this.updateSubmissionUI("submitting")
 		}
 
@@ -1462,13 +1475,14 @@ class GameApp {
 						miniStatusText.textContent = isManual ? "New personal best!" : "New personal best! Score was auto-submitted."
 					}
 					// Autosubmit and show the mini-leaderboard when done
-					this.attemptScoreSubmission()
+					await this.attemptScoreSubmission()
 				} else {
 					// PB but no name - try to show input
 					this.tryShowNameSubmissionUI()
 				}
 			} else {
-				if (isManual && playerName && context && context.personalBest) {
+				if (playerName && context && context.personalBest) {
+					// We show the message even if silent, because silent just meant "don't show the initial loader"
 					this.updateSubmissionUI("idle", `Player Name set to "${playerName}." Score not submitted because it's lower than your personal best (${context.personalBest.score}).`)
 					if (this.playerNameSubmissionContainer) this.playerNameSubmissionContainer.classList.add("hidden")
 					if (this.playerNameMissingContainer) this.playerNameMissingContainer.classList.add("hidden")
