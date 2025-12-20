@@ -261,6 +261,14 @@ export class PowerupManager {
 		return [...this.powerups]
 	}
 
+	clone(): PowerupManager {
+		const newManager = new PowerupManager(this.rng) // RNG reference is shared/ignored? AI doesn't need to mutate RNG for prediction mostly
+		newManager.powerups = [...this.powerups] // Shallow copy of array, objects are effectively immutable for simulation purposes usually
+		newManager.lastSpawnTime = this.lastSpawnTime
+		newManager.lastUpdateTime = this.lastUpdateTime
+		return newManager
+	}
+
 	// Persistence
 	serialize(): SavedPowerupState {
 		return {

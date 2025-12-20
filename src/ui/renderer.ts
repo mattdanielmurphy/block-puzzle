@@ -16,13 +16,15 @@ export class GameRenderer {
 	layout!: Layout
 	animations: Effect[] = []
 
-	constructor(canvas: HTMLCanvasElement) {
+	constructor(canvas: HTMLCanvasElement, autoResize: boolean = true) {
 		this.canvas = canvas
 		const ctx = canvas.getContext("2d", { alpha: false })
 		if (!ctx) throw new Error("Could not get 2d context")
 		this.ctx = ctx
 		this.resize()
-		window.addEventListener("resize", () => this.resize())
+		if (autoResize) {
+			window.addEventListener("resize", () => this.resize())
+		}
 	}
 
 	addEffect(effect: Effect) {
@@ -161,7 +163,10 @@ export class GameRenderer {
 	drawBoard(grid: Grid, ghostPos: { r: number; c: number } | null, dragShape: Shape | null) {
 		const { x, y, cellSize } = this.layout.boardRect
 		const gap = THEME.metrics.cellGap
-		const rad = THEME.metrics.borderRadius
+
+		// Dynamic radius: 15% of cell size, but clamped
+		// If cells are tiny (e.g. simulation), we want sharp corners, not circles.
+		const rad = Math.max(1, cellSize * 0.15)
 
 		// Draw Background Slots
 		for (let r = 0; r < GRID_SIZE; r++) {
@@ -178,7 +183,8 @@ export class GameRenderer {
 
 		// Draw Subdivision Lines
 		this.ctx.strokeStyle = THEME.colors.subgridLine
-		this.ctx.lineWidth = 4
+		// Dynamic linewidth: 8% of cell size
+		this.ctx.lineWidth = Math.max(0.5, cellSize * 0.08)
 		this.ctx.beginPath()
 		// Vertical lines (after col 2 and 5)
 		for (let c = 3; c < GRID_SIZE; c += 3) {

@@ -5,6 +5,31 @@ import { Powerup, PowerupActivation, PowerupManager } from "./powerups"
 import { RNG } from "./rng"
 
 export class GameEngine {
+	// Fast cloning for AI simulation
+	clone(): GameEngine {
+		const newEngine = new GameEngine(this.seed) // Seed doesn't matter much for simulation if properly state-copied
+
+		// Fast copy of grid (Uint8Array-like behavior with regular array)
+		newEngine.grid = this.grid.slice()
+
+		newEngine.score = this.score
+		newEngine.currentShapes = [...this.currentShapes]
+		newEngine.isGameOver = this.isGameOver
+		newEngine.moves = this.moves
+
+		// IMPORTANT: For AI simulation, we don't strictly need perfect PowerupManager state
+		// if we aren't simulating powerup spawns deep in the tree.
+		// However, we DO need to know if a powerup is on the board to clear it.
+		// Let's do a lightweight copy if possible, or just ignore for speed if acceptable.
+		// For correctness, we should clone it.
+		newEngine.powerupManager = this.powerupManager.clone()
+
+		// Copy RNG state only if needed for highly deterministic future spawns (rarely needed for 1-2 move lookahead)
+		// newEngine.rng = this.rng.clone()
+
+		return newEngine
+	}
+
 	// Persistence
 	serialize(): SavedEngineState {
 		return {

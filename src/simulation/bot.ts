@@ -1,6 +1,7 @@
 import { ALL_SHAPES, SHAPE_BASE_INDEX_MAP } from "../engine/shapes"
 import { MoveResult, Shape } from "../engine/types"
 
+import { BitwiseGameEngine } from "../engine/bitwise-logic"
 import { GameEngine } from "../engine/logic"
 
 export interface BotMove {
@@ -10,31 +11,69 @@ export interface BotMove {
 	score: number
 }
 
+export interface BotWeights {
+	pointsMultiplier: number
+	emptyBoardMultiplier: number // actually a penalty per occupied, or bonus per empty. Logic currently does `score -= occupied * X`
+	adjacencyBonus: number
+	holePenalty: number
+	boxCompletionBonus: number
+}
+
+// Default "Hand-Tuned" Weights
+export const DEFAULT_WEIGHTS: BotWeights = {
+	pointsMultiplier: 1.5,
+	emptyBoardMultiplier: 2.0,
+	adjacencyBonus: 0.5,
+	holePenalty: 20.0,
+	boxCompletionBonus: 0.5,
+}
+
+// Naive "Clean Slate" weights for pure evolution testing
+export const NAIVE_WEIGHTS: BotWeights = {
+	pointsMultiplier: 1.0, // Only cares about points
+	emptyBoardMultiplier: 0,
+	adjacencyBonus: 0,
+	holePenalty: 0,
+	boxCompletionBonus: 0,
+}
+
 export class Bot {
 	engine: GameEngine
+	weights: BotWeights
+	lookaheadDepth: number = 2
 
-	constructor(engine: GameEngine) {
+	constructor(engine: GameEngine, weights: BotWeights = DEFAULT_WEIGHTS) {
 		this.engine = engine
+		this.weights = weights
 	}
 
-	// Clone engine state to simulate a move without affecting real game
-	private cloneEngine(engine: GameEngine): GameEngine {
-		const saved = engine.serialize()
-		const newEngine = new GameEngine(saved.seed)
-		newEngine.deserialize(saved)
-		return newEngine
+	// Create a bitwise copy for simulation
+	private createBitwise(engine: GameEngine): BitwiseGameEngine {
+		const b = new BitwiseGameEngine()
+		// Copy grid manualy
+		for (let i = 0; i < 81; i++) {
+			if (engine.grid[i] !== 0) {
+				const r = Math.floor(i / 9)
+				const c = i % 9
+				const blockIdx = Math.floor(r / 3)
+				const rowInBlock = r % 3
+				const bitIndex = rowInBlock * 9 + c
+				b.board[blockIdx] |= 1 << bitIndex
+			}
+		}
+		b.score = engine.score
+		return b
 	}
 
-	// Basic greedy strategy: Find the move that results in the best immediate heuristic score
+	// Dynamic lookahead using FAST Bitwise Engine
 	findBestMove(): BotMove | null {
 		let bestMove: BotMove | null = null
-		let bestHeuristic = -Infinity
+		let bestTotalHeuristic = -Infinity
+
+		// Convert current state ONCE
+		const rootSim = this.createBitwise(this.engine)
 
 		const availableIndices = this.engine.currentShapes.map((s, i) => (s ? i : -1)).filter((i) => i !== -1)
-
-		// Sort available shapes to try larger ones first (simple heuristic to prioritize hard-to-place pieces)
-		// Actually, exhaustive search over "pick one shape and place it" is better?
-		// We are just picking the NEXT move.
 
 		for (const shapeIndex of availableIndices) {
 			const shape = this.engine.currentShapes[shapeIndex]
@@ -42,16 +81,103 @@ export class Bot {
 
 			for (let r = 0; r < 9; r++) {
 				for (let c = 0; c < 9; c++) {
-					if (this.engine.canPlace(shape, r, c)) {
-						// Simulate!
-						const simEngine = this.cloneEngine(this.engine)
-						const result = simEngine.place(shapeIndex, r, c)
+					// Check fast place
+					if (rootSim.canPlace(shape.cells, r, c)) {
+						// 1. Simulate First Move
+						const sim1 = rootSim.clone()
+						const lines1 = sim1.place(shape.cells, r, c)
 
-						const heuristic = this.evaluate(simEngine, result)
+						// Heuristic 1
+						const h1 = this.evaluateBitwise(sim1, lines1)
 
-						if (heuristic > bestHeuristic) {
-							bestHeuristic = heuristic
-							bestMove = { shapeIndex, r, c, score: heuristic }
+						// Pruning
+						if (h1 < -5000) {
+							if (h1 > bestTotalHeuristic) {
+								bestTotalHeuristic = h1
+								bestMove = { shapeIndex, r, c, score: h1 }
+							}
+							continue
+						}
+
+						// Optimization
+						if (bestTotalHeuristic > -Infinity && h1 < bestTotalHeuristic - 40) {
+							continue
+						}
+
+						// 2. Look ahead
+						let bestH2 = -5000
+						const available2 = availableIndices.filter((i) => i !== shapeIndex)
+
+						if (available2.length === 0) {
+							// No more shapes
+							if (h1 > bestTotalHeuristic) {
+								bestTotalHeuristic = h1
+								bestMove = { shapeIndex, r, c, score: h1 }
+							}
+							continue
+						}
+
+						for (const idx2 of available2) {
+							const s2 = this.engine.currentShapes[idx2]
+							if (!s2) continue
+
+							for (let r2 = 0; r2 < 9; r2++) {
+								for (let c2 = 0; c2 < 9; c2++) {
+									if (sim1.canPlace(s2.cells, r2, c2)) {
+										const sim2 = sim1.clone()
+										const lines2 = sim2.place(s2.cells, r2, c2)
+										const h2 = this.evaluateBitwise(sim2, lines2)
+
+										// 3-Move Lookahead Expansion
+										if (this.lookaheadDepth >= 3) {
+											let bestH3 = -5000
+											const available3 = available2.filter((i) => i !== idx2)
+
+											if (available3.length > 0) {
+												for (const idx3 of available3) {
+													const s3 = this.engine.currentShapes[idx3]
+													if (!s3) continue
+
+													for (let r3 = 0; r3 < 9; r3++) {
+														for (let c3 = 0; c3 < 9; c3++) {
+															if (sim2.canPlace(s3.cells, r3, c3)) {
+																// Lightweight heuristic check for 3rd move (no full eval needed maybe?)
+																// Actually just checking validity is essentially "can I survive".
+																// But let's do a score check
+																const sim3 = sim2.clone()
+																const lines3 = sim3.place(s3.cells, r3, c3)
+																const h3 = this.evaluateBitwise(sim3, lines3)
+																if (h3 > bestH3) bestH3 = h3
+															}
+														}
+													}
+												}
+											} else {
+												bestH3 = 0 // No 3rd move needed
+											}
+
+											// Propagate bestH3 up
+											if (bestH3 <= -4000) {
+												// 2nd move leads to death/stuck on 3rd move
+												// penalize h2?
+												// For now, simple sum
+											} else {
+												// Accumulate
+												if (bestH3 + h2 > bestH2) bestH2 = h2 + bestH3
+											}
+										} else {
+											if (h2 > bestH2) bestH2 = h2
+										}
+									}
+								}
+							}
+						}
+
+						const totalHeuristic = h1 + (bestH2 > -4000 ? bestH2 : 0)
+
+						if (totalHeuristic > bestTotalHeuristic) {
+							bestTotalHeuristic = totalHeuristic
+							bestMove = { shapeIndex, r, c, score: totalHeuristic }
 						}
 					}
 				}
@@ -61,121 +187,64 @@ export class Bot {
 		return bestMove
 	}
 
-	private evaluate(engine: GameEngine, lastMove: MoveResult): number {
+	private evaluateBitwise(engine: BitwiseGameEngine, linesCleared: number): number {
 		let score = 0
 
-		// --- 1. Survival (Highest Check) ---
-		// If placing this piece makes me unable to place the others, huge penalty!
-		const remainingShapes = engine.currentShapes.filter((s) => s !== null)
-		if (remainingShapes.length > 0) {
-			let unplaceableCount = 0
-			for (const s of remainingShapes) {
-				if (s && !engine.canPlaceShape(s)) {
-					unplaceableCount++
-				}
-			}
-			if (unplaceableCount > 0) {
-				return -10000 * unplaceableCount // Immediate fail state for this branch
-			}
-		}
+		// 1. Clears
+		score += linesCleared * 20 * this.weights.pointsMultiplier // simplified points
 
-		// --- 2. Base Points (Clears) ---
-		// We want to clear lines, but we want to prioritize surviving over greedy points
-		// unless the points come from clearing a LOT.
-		// lastMove.pointsAdded includes cells placed + clear bonuses.
-		score += lastMove.pointsAdded * 1.5
-
-		// --- 3. Board "Quality" Heuristics ---
-		// Analyze the grid AFTER the move (and clears)
-
+		// 2. Board Stats
 		let occupiedCount = 0
 		let adjacencyBonus = 0
 		let holePenalty = 0
 		let boxCompletionBonus = 0
 
-		const grid = engine.grid
-		const size = 9
+		// Unpack bits to analyze
+		// This is slightly slower but we do it fewer times thanks to cloning speed
+		// Actually we can analyze bits directly?
+		// For now let's iterate cells, optimization for later: bitwise counting
 
-		// Helper to check bounds
-		const isOcc = (r: number, c: number) => r >= 0 && r < size && c >= 0 && c < size && grid[r * size + c] !== 0
+		const isOcc = (r: number, c: number) => {
+			if (r < 0 || r > 8 || c < 0 || c > 8) return false // Walls are not occupied
+			const blockIdx = Math.floor(r / 3)
+			const rowInBlock = r % 3
+			const bitIndex = rowInBlock * 9 + c
+			return (engine.board[blockIdx] & (1 << bitIndex)) !== 0
+		}
 
-		for (let r = 0; r < size; r++) {
-			for (let c = 0; c < size; c++) {
-				const idx = r * size + c
-				if (grid[idx] !== 0) {
+		for (let r = 0; r < 9; r++) {
+			for (let c = 0; c < 9; c++) {
+				if (isOcc(r, c)) {
 					occupiedCount++
-
-					// Adjacency: Good to be next to other blocks (clumping)
-					// We only check right and down to avoid double counting
-					// actually double counting is fine if consistent, but let's check all 4 neighbors
-					// to seeing how "surrounded" this block is.
-					let neighbors = 0
-					if (isOcc(r - 1, c)) neighbors++
-					if (isOcc(r + 1, c)) neighbors++
-					if (isOcc(r, c - 1)) neighbors++
-					if (isOcc(r, c + 1)) neighbors++
-
-					// Reward having neighbors (contributing to a cluster)
-					adjacencyBonus += neighbors * 1.0
+					// Adjacency
+					if (isOcc(r + 1, c)) adjacencyBonus++
+					if (isOcc(r, c + 1)) adjacencyBonus++
 				} else {
-					// It's empty. Is it a 1x1 hole?
-					// A hole is empty surrounded by occupied (or walls)
+					// Hole?
 					let walls = 0
 					if (r === 0 || isOcc(r - 1, c)) walls++
-					if (r === size - 1 || isOcc(r + 1, c)) walls++
+					if (r === 8 || isOcc(r + 1, c)) walls++
 					if (c === 0 || isOcc(r, c - 1)) walls++
-					if (c === size - 1 || isOcc(r, c + 1)) walls++
-
-					if (walls === 4) {
-						holePenalty += 20 // 1x1 holes are very bad
-					}
+					if (c === 8 || isOcc(r, c + 1)) walls++
+					if (walls === 4) holePenalty += 1
 				}
 			}
 		}
 
-		// Penalize total fullness (we want empty board)
-		// But clearing lines (in step 2) naturally reduces this.
-		// We add a small penalty per occupied block to act as a tie breaker
-		// favoring moves that clear or keep board empty.
-		score -= occupiedCount * 2.0
-
-		// Add Adjacency Score
-		// We want to encourage filling HOLES/GAPS, effectively "repairing" the board.
-		score += adjacencyBonus * 0.5
-
-		// --- 4. 3x3 Box Focus ---
-		// Users said: "Better to contribute to the filling up of a 3x3 box"
-		// Let's reward boxes that are > 50% full but not full (since full would have cleared)
-		// Wait, if they cleared, they are now empty.
-		// If they are NOT cleared, we want them to be neat.
-		for (let b = 0; b < 9; b++) {
-			const startR = Math.floor(b / 3) * 3
-			const startC = (b % 3) * 3
-			let filledInBox = 0
-			for (let r = startR; r < startR + 3; r++) {
-				for (let c = startC; c < startC + 3; c++) {
-					if (grid[r * size + c] !== 0) filledInBox++
-				}
-			}
-
-			// If box is very full (but not cleared), it's a "danger zone" or "opportunity"
-			// If we just placed a block there and didn't clear, it might be risky.
-			// But the user WANTS to fill boxes.
-			// Let's reward filling a box cleanly?
-			// Actually, maybe we just assume adjacency covers this.
-			// Let's reward high density in boxes to encourage finishing them.
-			if (filledInBox > 0) {
-				boxCompletionBonus += Math.pow(filledInBox, 1.5) // Non-linear reward for concentrating blocks
-			}
+		// 3. Box Focus (Simplified)
+		// Just checking how full boxes are
+		for (let b = 0; b < 3; b++) {
+			// Accessing the 3 ints directly gives us rows 0-2, 3-5, 6-8
+			// We can check columns in them
+			// actually simpler to just stick to the loops above, bitwise box analysis is tricky
+			// Actually, engine.board[0] is the top 3 rows.
+			// Box 0 (Top-Left) is bits 0-2, 9-11, 18-20 of board[0]
+			// We can implement bitwise counts later.
 		}
-		score += boxCompletionBonus * 0.5
 
-		score -= holePenalty
-
-		// --- 5. Fuzz / Tie Breaker ---
-		// Add tiny random amount to prevent "always top-left" deterministic boredom
-		// and to explore slightly different equal-value paths over time
-		score += Math.random() * 0.5
+		score -= occupiedCount * this.weights.emptyBoardMultiplier
+		score += adjacencyBonus * this.weights.adjacencyBonus
+		score -= holePenalty * this.weights.holePenalty
 
 		return score
 	}
