@@ -59,7 +59,7 @@ export class GameRenderer {
 	}
 
 	recalcLayout() {
-		const padding = THEME.metrics.boardPadding
+		const padding = this.height < 650 ? 5 : THEME.metrics.boardPadding
 		const availableW = this.width - padding * 2
 		// Board is square
 		// We want board to be as big as possible but leave room for tray
@@ -276,7 +276,7 @@ export class GameRenderer {
 					// Scale up on hover - more prominent for 'snapping' feel
 					cellSize *= 1.2
 					// Stronger glow
-					this.ctx.shadowColor = isPlaceable ? "rgba(126, 224, 244, 0.7)" : "rgba(255, 255, 255, 0.3)"
+					this.ctx.shadowColor = isPlaceable ? "rgba(126, 224, 244, 0.6)" : "rgba(255, 255, 255, 0.3)"
 					this.ctx.shadowBlur = 30
 				}
 
@@ -314,7 +314,7 @@ export class GameRenderer {
 		this.ctx.fillStyle = THEME.colors.shapes[shape.colorId]
 		if (highlight) {
 			// Clean brightness boost using filter
-			this.ctx.filter = "brightness(1.4) saturate(1.1)"
+			this.ctx.filter = "brightness(1.2) saturate(1.05)"
 		}
 
 		shape.cells.forEach((p) => {

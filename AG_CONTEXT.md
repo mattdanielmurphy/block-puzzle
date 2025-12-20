@@ -42,4 +42,5 @@
 - **Developer Controls**: Enabled during development (Vite dev mode). 
   - `1`, `2`, `3`, `4`: Spawn bombs of increasing size.
   - `K`: End current game (Kill).
+  - **Visual Dev Indicators**: In dev mode, the background is dark red, a "DEV" text appears in the margin, and a help box list dev commands.
   - **IP Spoofing**: Dev mode fetches the actual public IP to test identification of remote devices.

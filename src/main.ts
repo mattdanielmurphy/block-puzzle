@@ -198,6 +198,14 @@ class GameApp {
 	constructor() {
 		this.displayVersion()
 
+		// Dev Mode Visuals
+		if (import.meta.env.DEV) {
+			document.body.classList.add("dev-mode")
+			document.getElementById("dev-indicator")?.classList.remove("hidden")
+			document.getElementById("dev-controls-help")?.classList.remove("hidden")
+			THEME.colors.background = "#1a0505" // Dark red to match CSS gradient
+		}
+
 		// Detect Mobile
 		this.isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
 		const pauseInst = document.getElementById("pause-instruction")

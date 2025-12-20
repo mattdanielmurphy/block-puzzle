@@ -3,7 +3,7 @@
     --board-bg: #0c0f26;
     --cell-empty: #141a33;
     --text-color: #e5e7ff;
-    --accent-color: #7ee0f4;
+    --accent-color: #5fc9df;
     --danger-color: #f472b6;
     /* Use 0px as default for env fallback to ensure valid CSS */
     --safe-area-top: env(safe-area-inset-top, 0px);
@@ -413,8 +413,8 @@ canvas {
 }
 
 .suggestion-btn:hover {
-    background: var(--accent-color);
-    color: #050815;
+    background: rgba(126, 224, 244, 0.2);
+    color: var(--accent-color);
     border-color: var(--accent-color);
     transform: translateY(-1px);
 }
@@ -1098,12 +1098,6 @@ footer {
         font-size: 1.2rem;
     }
 
-    canvas {
-        width: 100vw;
-        aspect-ratio: 1 / 1;
-        /* keep it square even when width shrinks */
-    }
-
     /* Modals / tutorial boxes should not force wider-than-screen layouts */
     .tutorial-box {
         width: auto;
@@ -1137,4 +1131,134 @@ footer {
     padding: 0;
     pointer-events: none;
     opacity: 0.8;
+}
+
+/* Dev Mode Styling */
+body.dev-mode {
+    background: linear-gradient(135deg, #1a0505 0%, #3d0a0a 50%, #1a0505 100%);
+}
+
+#dev-indicator {
+    position: fixed;
+    top: 50%;
+    left: -40px;
+    transform: translateY(-50%) rotate(-90deg);
+    font-size: 8rem;
+    font-weight: 900;
+    color: rgba(255, 255, 255, 0.05);
+    pointer-events: none;
+    z-index: 0;
+    text-transform: uppercase;
+    letter-spacing: 1.5rem;
+}
+
+#dev-controls-help {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: rgba(45, 10, 10, 0.8);
+    padding: 15px;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    color: #ffaaaa;
+    border: 1px solid rgba(255, 68, 68, 0.4);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+    z-index: 100;
+    pointer-events: none;
+    line-height: 1.6;
+    backdrop-filter: blur(8px);
+}
+
+#dev-controls-help h4 {
+    margin: 0 0 8px 0;
+    color: #ff4444;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    font-size: 0.85rem;
+    border-bottom: 1px solid rgba(255, 68, 68, 0.3);
+    padding-bottom: 4px;
+}
+
+@media (max-width: 1000px) {
+    #dev-indicator {
+        font-size: 4rem;
+        left: -20px;
+        letter-spacing: 0.5rem;
+    }
+
+    #dev-controls-help {
+        bottom: auto;
+        top: max(80px, var(--safe-area-top));
+        right: 10px;
+        padding: 10px;
+        font-size: 0.7rem;
+        background: rgba(45, 10, 10, 0.9);
+    }
+}
+
+/* Short Viewport Responsiveness (Dev Tools / Split Screen) */
+@media (max-height: 700px) {
+    header {
+        padding: 8px 16px;
+        min-height: 60px;
+    }
+
+    #status-face {
+        width: 72px;
+        height: 72px;
+    }
+
+    .score-label span {
+        font-size: 1.2rem;
+    }
+
+    .score-label {
+        width: 60px;
+    }
+
+    #dev-indicator {
+        font-size: 4rem;
+        left: -20px;
+        letter-spacing: 0.5rem;
+    }
+}
+
+@media (max-height: 550px) {
+    header {
+        padding: 4px 12px;
+        min-height: 50px;
+    }
+
+    #status-face {
+        width: 56px;
+        height: 56px;
+    }
+
+    .score-label span {
+        font-size: 1rem;
+    }
+
+    .score-label {
+        font-size: 0.7rem;
+    }
+
+    #pause-btn,
+    #settings-btn,
+    #leaderboard-header-btn {
+        height: 32px;
+        width: 32px;
+        font-size: 1.1rem;
+    }
+
+    #dev-controls-help {
+        padding: 6px;
+        font-size: 0.65rem;
+        top: 60px;
+    }
+
+    #dev-indicator {
+        font-size: 2.5rem;
+        left: -15px;
+        letter-spacing: 0.2rem;
+    }
 }
