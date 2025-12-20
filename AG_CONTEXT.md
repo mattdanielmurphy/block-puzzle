@@ -35,7 +35,7 @@
 - **Hand Timer**: A per-hand countdown timer that resets when a new hand is dealt. It starts at 10 seconds and progressively quickens to a minimum of 8 seconds (100ms faster per hand). If the timer runs out, the game ends.
 - **Powerups (Bombs)**: Bombs are time-based spawns managed by `PowerupManager`. They only spawn when the game is active (after the first piece is placed, the timer has started, and before game over/pause/tutorial).
 - **Modal Component**: Reusable `Modal` class in `src/ui/modal.ts` handles overlays (Settings, Leaderboard, Game Over, Pause). Supports Esc key and outside-click dismissal.
-- **Leaderboard Submission**: High scores are tracked per player. At game over, the system performs a conditional check (via `checkPBAndSubmit`) against the player's remote personal best. The submission UI (name input/suggestions) is only revealed if a new record is achieved, respecting a reading delay for the game-over quote.
+- **Leaderboard Submission**: High scores are tracked per player. At game over, the system performs a conditional check (via `checkPBAndSubmit`) against the player's remote personal best. The submission UI is revealed if no name is set or if a new record is achieved. Improved feedback is provided if a player name is manually set but the score is not a new personal best.
 - **Player Identity & Fingerprinting**: Uses a dedicated `player_identities` table to track multiple fingerprints (IP + User Agent) per `player_id`. 
   - **Home Network Identification**: Employs partial IP matching (64-bit IPv6 prefix / 24-bit IPv4 subnet) to recognize players across different devices on the same local network.
   - **Automatic Sync**: New identities are automatically registered/updated during sync or score submission.

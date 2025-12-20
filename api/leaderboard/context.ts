@@ -3,9 +3,8 @@ import * as rateLimit from "../_lib/rateLimit"
 import * as validation from "../_lib/validation"
 
 import type { VercelRequest, VercelResponse } from "@vercel/node"
+import { db, supabase } from "../_lib/supabase"
 import { errorJson, json } from "../_lib/http"
-
-import { supabase } from "../_lib/supabase"
 
 type VerifiedEntry = { name: string; score: number; rank: number }
 
@@ -15,6 +14,7 @@ type ContextualLeaderboardResponse = {
 	playerRank: number
 	surrounding: VerifiedEntry[]
 	isPersonalBest: boolean
+	personalBest?: { score: number } | null
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -41,7 +41,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 	const playerScore = scoreParam ? Number(scoreParam) : null
 	const playerName = typeof nameParam === "string" ? nameParam : null
 	const mode = typeof modeParam === "string" ? modeParam : "normal"
-	const table = mode === "chill" ? "chill_scores" : "scores"
+	const table = db(mode === "chill" ? "chill_scores" : "scores")
 
 	try {
 		// 1. Get Top Score
@@ -70,6 +70,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
 		// 3. Check Personal Best
 		let isPersonalBest = true
+		let personalBest: { score: number } | null = null
 		if (playerName) {
 			const { data: existingScoreData, error: pbError } = await supabase.from(table).select("score").eq("name", playerName).order("score", { ascending: false }).limit(1).maybeSingle()
 
@@ -77,8 +78,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 				console.error("Contextual leaderboard: Error checking personal best:", pbError)
 			}
 
-			if (existingScoreData && existingScoreData.score >= playerScore) {
-				isPersonalBest = false
+			if (existingScoreData) {
+				personalBest = { score: existingScoreData.score }
+				if (existingScoreData.score >= playerScore) {
+					isPersonalBest = false
+				}
 			}
 		}
 
@@ -105,6 +109,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 			playerRank,
 			surrounding: surrounding.sort((a, b) => a.rank - b.rank),
 			isPersonalBest,
+			personalBest,
 		}
 		return json(res, 200, resp)
 	} catch (e) {

@@ -2,8 +2,7 @@ import * as http from "../_lib/http"
 import * as ip from "../_lib/ip"
 
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-
-import { supabase } from "../_lib/supabase"
+import { db, supabase } from "../_lib/supabase"
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
 	if (req.method !== "GET") return http.errorJson(res, 405, "METHOD_NOT_ALLOWED", "Use GET")
@@ -29,11 +28,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
 		// 2. Search player_identities for matching IP or User Agent
 		// We join with the players table to get the name and scores
-		let query = supabase.from("player_identities").select(`
+		const playersTable = db("players")
+		let query = supabase.from(db("player_identities")).select(`
 				ip_address,
 				user_agent,
 				last_seen,
-				players (
+				players: ${playersTable} (
 					id,
 					name,
 					best_score,
@@ -47,7 +47,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
 		query = query.or(`${ipMatch},${uaMatch}`)
 
-		const { data: identities, error } = await query.order("last_seen", { ascending: false }).limit(20)
+		const { data, error } = await query.order("last_seen", { ascending: false }).limit(20)
+		const identities = data as any[]
 
 		if (error) {
 			console.error("Identify: Query error:", error)

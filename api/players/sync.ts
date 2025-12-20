@@ -3,8 +3,7 @@ import * as ip from "../_lib/ip"
 import * as validation from "../_lib/validation"
 
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-
-import { supabase } from "../_lib/supabase"
+import { db, supabase } from "../_lib/supabase"
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
 	if (req.method !== "POST") return http.errorJson(res, 405, "METHOD_NOT_ALLOWED", "Use POST")
@@ -31,7 +30,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 		// We want to enforce "One Player Entity per Name" to keep the UUID consistent.
 		// If they exist, we UPDATE their fingerprint to the current one.
 		// This sacrifices "multi-device concurrent memory" for "consistent UUID".
-		const { data: existingPlayer } = await supabase.from("players").select("id, best_score, chill_best_score").eq("name", name).limit(1).maybeSingle()
+		const { data: existingPlayer } = await supabase.from(db("players")).select("id, best_score, chill_best_score").eq("name", name).limit(1).maybeSingle()
 
 		let playerId: string
 
@@ -39,7 +38,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 			playerId = existingPlayer.id
 		} else {
 			// Create new player record if they've never played before
-			const { data: newPlayer, error: insertError } = await supabase.from("players").insert({ name: name }).select("id").single()
+			const { data: newPlayer, error: insertError } = await supabase.from(db("players")).insert({ name: name }).select("id").single()
 
 			if (insertError) {
 				console.error("Sync Player: Error inserting player:", insertError)
@@ -50,7 +49,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
 		// 2. Upsert the current identity (IP + UA) for this player
 		// This automatically handles having multiple IPs/UAs for one player
-		await supabase.from("player_identities").upsert(
+		await supabase.from(db("player_identities")).upsert(
 			{
 				player_id: playerId,
 				ip_address: clientIp,
@@ -63,11 +62,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 		)
 
 		// 3. Mark the player themselves as last seen
-		await supabase.from("players").update({ last_seen: new Date().toISOString() }).eq("id", playerId)
+		await supabase.from(db("players")).update({ last_seen: new Date().toISOString() }).eq("id", playerId)
 
 		// 3. Link existing scores with this name to this new playerId if they don't have one
-		await supabase.from("scores").update({ player_id: playerId }).eq("name", name).is("player_id", null)
-		await supabase.from("chill_scores").update({ player_id: playerId }).eq("name", name).is("player_id", null)
+		await supabase.from(db("scores")).update({ player_id: playerId }).eq("name", name).is("player_id", null)
+		await supabase.from(db("chill_scores")).update({ player_id: playerId }).eq("name", name).is("player_id", null)
 
 		return http.json(res, 200, {
 			ok: true,

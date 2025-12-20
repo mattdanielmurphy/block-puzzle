@@ -4,8 +4,7 @@ import * as rateLimit from "../_lib/rateLimit"
 import * as validation from "../_lib/validation"
 
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-
-import { supabase } from "../_lib/supabase"
+import { db, supabase } from "../_lib/supabase"
 
 // The following Postgres functions are required for this endpoint:
 //
@@ -105,20 +104,20 @@ export async function handler(req: VercelRequest, res: VercelResponse) {
 		}
 
 		const mode = typeof body.mode === "string" ? body.mode : "normal"
-		const table = mode === "chill" ? "chill_scores" : "scores"
-		const trimFunction = mode === "chill" ? "trim_chill_scores" : "trim_verified_scores"
+		const table = db(mode === "chill" ? "chill_scores" : "scores")
+		const trimFunction = db(mode === "chill" ? "trim_chill_scores" : "trim_verified_scores")
 
 		const userAgent = (req.headers["user-agent"] as string) || "UNKNOWN"
 
 		// E1) Ensure player exists and get their ID
 		let playerId: string | null = null
-		const { data: player } = await supabase.from("players").select("id").eq("name", nameV.value).limit(1).maybeSingle()
+		const { data: player } = await supabase.from(db("players")).select("id").eq("name", nameV.value).limit(1).maybeSingle()
 
 		if (player) {
 			playerId = player.id
 		} else {
 			// Create new player record
-			const { data: newPlayer, error: createPlayerError } = await supabase.from("players").insert({ name: nameV.value }).select("id").single()
+			const { data: newPlayer, error: createPlayerError } = await supabase.from(db("players")).insert({ name: nameV.value }).select("id").single()
 
 			if (createPlayerError) {
 				console.error("Submit: Error creating player:", createPlayerError)
@@ -129,7 +128,7 @@ export async function handler(req: VercelRequest, res: VercelResponse) {
 
 		// E1.5) Upsert identity if we have a playerId
 		if (playerId) {
-			await supabase.from("player_identities").upsert(
+			await supabase.from(db("player_identities")).upsert(
 				{
 					player_id: playerId,
 					ip_address: clientIp,
@@ -142,7 +141,7 @@ export async function handler(req: VercelRequest, res: VercelResponse) {
 			)
 
 			// Also update last_seen on player
-			await supabase.from("players").update({ last_seen: new Date().toISOString() }).eq("id", playerId)
+			await supabase.from(db("players")).update({ last_seen: new Date().toISOString() }).eq("id", playerId)
 		}
 
 		// E2) Check if a better score already exists for this name (we'll stick to name-based PB for now, or should it be player_id based?)
@@ -187,7 +186,7 @@ export async function handler(req: VercelRequest, res: VercelResponse) {
 		if (playerId) {
 			const bestScoreField = mode === "chill" ? "chill_best_score" : "best_score"
 			await supabase
-				.from("players")
+				.from(db("players"))
 				.update({ [bestScoreField]: scoreV.value })
 				.eq("id", playerId)
 		}

@@ -415,13 +415,33 @@ class GameApp {
 			if (resp.ok) {
 				const data = await resp.json()
 				if (data.ok) {
-					this.remoteBestScore = data.best_score || 0
-					this.remoteChillBestScore = data.chill_best_score || 0
+					this.syncRemoteBestScore(data)
 					console.log(`[syncExistingPlayer] Player successfully synced. Best: ${this.remoteBestScore}, Chill Best: ${this.remoteChillBestScore}`)
 				}
 			}
 		} catch (e) {
 			console.error("[syncExistingPlayer] Failed to sync player:", e)
+		}
+	}
+
+	private syncRemoteBestScore(data: { best_score: number; chill_best_score: number }) {
+		this.remoteBestScore = data.best_score || 0
+		this.remoteChillBestScore = data.chill_best_score || 0
+
+		const pb = this.chillMode ? this.remoteChillBestScore : this.remoteBestScore
+		if (pb > this.engine.bestScore) {
+			console.log(`[syncRemoteBestScore] Updating local best score from ${this.engine.bestScore} to remote PB ${pb}`)
+			this.engine.bestScore = pb
+			const key = this.chillMode ? "bp_best_score_chill" : "bp_best_score"
+			localStorage.setItem(key, pb.toString())
+			this.updateBestScoreDisplay()
+		}
+	}
+
+	private updateBestScoreDisplay() {
+		const el = document.getElementById("best-score")
+		if (el) {
+			el.textContent = this.engine.bestScore.toString()
 		}
 	}
 
@@ -497,16 +517,29 @@ class GameApp {
 
 		if (this.submitNameBtn) {
 			this.submitNameBtn.disabled = state === "submitting"
+			if (state === "submitting") {
+				this.submitNameBtn.innerHTML = '<span class="spinner"></span>'
+				this.submitNameBtn.classList.add("btn-submitting")
+			} else {
+				this.submitNameBtn.textContent = "Submit"
+				this.submitNameBtn.classList.remove("btn-submitting")
+			}
 		}
-
-		const submissionContainer = document.getElementById("player-name-submission-container")
 
 		switch (state) {
 			case "idle":
-				if (submissionContainer) submissionContainer.classList.remove("hidden")
+				if (this.playerNameSubmissionContainer) this.playerNameSubmissionContainer.classList.remove("hidden")
 				if (statusEl) {
-					statusEl.textContent = ""
-					statusEl.classList.add("hidden")
+					if (message) {
+						statusEl.textContent = message
+						statusEl.classList.remove("hidden")
+						// If we have a message in idle, it usually means name was set but score wasn't submitted
+						// Hide suggestions in this case
+						if (this.playerSuggestionsContainer) this.playerSuggestionsContainer.classList.add("hidden")
+					} else {
+						statusEl.textContent = ""
+						statusEl.classList.add("hidden")
+					}
 				}
 				if (rankingEl) {
 					rankingEl.textContent = ""
@@ -514,7 +547,8 @@ class GameApp {
 				}
 				break
 			case "submitting":
-				if (submissionContainer) submissionContainer.classList.add("hidden")
+				if (this.playerNameSubmissionContainer) this.playerNameSubmissionContainer.classList.remove("hidden")
+				if (this.playerSuggestionsContainer) this.playerSuggestionsContainer.classList.add("hidden")
 				if (statusEl) {
 					statusEl.textContent = "Submitting score..."
 					statusEl.classList.remove("hidden")
@@ -525,15 +559,19 @@ class GameApp {
 				}
 				break
 			case "success":
-				if (submissionContainer) submissionContainer.classList.add("hidden")
+				if (this.playerNameSubmissionContainer) this.playerNameSubmissionContainer.classList.add("hidden")
+				if (this.playerSuggestionsContainer) this.playerSuggestionsContainer.classList.add("hidden")
 				if (statusEl) {
 					statusEl.textContent = "Score submitted!"
 					statusEl.classList.remove("hidden")
 				}
-				// ranking is populated asynchronously once leaderboard is fetched
 				break
 			case "error":
-				if (submissionContainer) submissionContainer.classList.remove("hidden")
+				if (this.playerNameSubmissionContainer) this.playerNameSubmissionContainer.classList.remove("hidden")
+				// Show suggestions again on error in case they want to fix something
+				if (this.playerSuggestionsContainer && !localStorage.getItem("bp_player_name")) {
+					this.playerSuggestionsContainer.classList.remove("hidden")
+				}
 				if (statusEl) {
 					statusEl.textContent = message || "Failed to submit score. You can try submitting again."
 					statusEl.classList.remove("hidden")
@@ -578,6 +616,7 @@ class GameApp {
 				const playerName = this.playerNameInput.value.trim()
 				if (playerName !== "" && this.engine.isGameOver && !this.scoreSubmitted) {
 					this.playerNameMissingContainer?.classList.add("hidden")
+					this.syncExistingPlayer()
 					// Re-check PB and submit
 					const contextPromise = this.fetchContextualLeaderboard(this.engine.score)
 					this.checkPBAndSubmit(this.engine.score, playerName, contextPromise, true)
@@ -803,7 +842,7 @@ class GameApp {
 		const best = localStorage.getItem(key)
 		if (best) this.engine.bestScore = parseInt(best, 10)
 		else this.engine.bestScore = 0
-		document.getElementById("best-score")!.textContent = this.engine.bestScore.toString()
+		this.updateBestScoreDisplay()
 	}
 
 	saveHighScore() {
@@ -811,7 +850,7 @@ class GameApp {
 			this.engine.bestScore = this.engine.score
 			const key = this.chillMode ? "bp_best_score_chill" : "bp_best_score"
 			localStorage.setItem(key, this.engine.score.toString())
-			document.getElementById("best-score")!.textContent = this.engine.bestScore.toString()
+			this.updateBestScoreDisplay()
 		}
 	}
 
@@ -1267,8 +1306,10 @@ class GameApp {
 					localStorage.setItem("bp_player_name", player.name)
 
 					// Update cached best scores for this identified player
-					this.remoteBestScore = player.best_score || 0
-					this.remoteChillBestScore = player.chill_best_score || 0
+					this.syncRemoteBestScore({
+						best_score: player.best_score,
+						chill_best_score: player.chill_best_score,
+					})
 
 					// Hide suggestion UI and submission container immediately
 					this.playerNameMissingContainer?.classList.add("hidden")
@@ -1397,12 +1438,16 @@ class GameApp {
 	private async checkPBAndSubmit(score: number, playerName: string | null, contextPromise: Promise<any>, isManual: boolean = false) {
 		if (this.scoreSubmitted) return
 
+		if (isManual) {
+			this.updateSubmissionUI("submitting")
+		}
+
 		const miniStatusText = document.getElementById("mini-leaderboard-status")
 
 		try {
 			// Fast check using locally known remote best if available
 			const currentRemoteBest = this.chillMode ? this.remoteChillBestScore : this.remoteBestScore
-			if (currentRemoteBest > 0 && score <= currentRemoteBest) {
+			if (!isManual && currentRemoteBest > 0 && score <= currentRemoteBest) {
 				console.log(`[checkPBAndSubmit] Fast-path: Score ${score} <= Remote Best ${currentRemoteBest}. Not a PB.`)
 				return
 			}
@@ -1423,6 +1468,11 @@ class GameApp {
 					this.tryShowNameSubmissionUI()
 				}
 			} else {
+				if (isManual && playerName && context && context.personalBest) {
+					this.updateSubmissionUI("idle", `Player Name set to "${playerName}." Score not submitted because it's lower than your personal best (${context.personalBest.score}).`)
+					if (this.playerNameSubmissionContainer) this.playerNameSubmissionContainer.classList.add("hidden")
+					if (this.playerNameMissingContainer) this.playerNameMissingContainer.classList.add("hidden")
+				}
 				// Not a personal best - try to show mini-leaderboard
 				this.tryShowNameSubmissionUI()
 			}

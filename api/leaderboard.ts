@@ -3,9 +3,8 @@ import * as rateLimit from "./_lib/rateLimit"
 import * as validation from "./_lib/validation"
 
 import type { VercelRequest, VercelResponse } from "@vercel/node"
+import { db, supabase } from "./_lib/supabase"
 import { errorJson, json } from "./_lib/http"
-
-import { supabase } from "./_lib/supabase"
 
 // Database schema assumed for this endpoint:
 //
@@ -84,13 +83,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 	if (!Number.isFinite(limit)) return errorJson(res, 400, "VALIDATION_ERROR", "limit must be a number")
 
 	const mode = typeof modeParam === "string" ? modeParam : "normal"
-	const table = mode === "chill" ? "chill_scores" : "scores"
+	const table = db(mode === "chill" ? "chill_scores" : "scores")
 
-	const { data: verified, error: verifiedError } = await supabase
-		.from(table)
-		.select("run_id, name, score, created_at")
-		.order("score", { ascending: false })
-		.limit(limit)
+	const { data: verified, error: verifiedError } = await supabase.from(table).select("run_id, name, score, created_at").order("score", { ascending: false }).limit(limit)
 
 	if (verifiedError) {
 		return errorJson(res, 500, "INTERNAL_SERVER_ERROR", "Could not fetch leaderboard.")
