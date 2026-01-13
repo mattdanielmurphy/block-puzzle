@@ -5,13 +5,19 @@
 - **Engine** (`src/engine`): Pure game logic (state, rules, scoring). `GameEngine` class.
 - **Renderer** (`src/ui`): Canvas drawing & effects. `GameRenderer` class.
 - **App** (`src/main.ts`): Orchestrator (loop, inputs, DOM UI).
-- **Build**: Custom ESBuild-based script (`build.js`). Output to `dist/`.
+- **Build**: Custom build script (`build.js`) using Vite for frontend and `tsc` for API.
+- **TypeScript Config**: 
+  - `tsconfig.json`: Base config with shared rules.
+  - `tsconfig.web.json`: Frontend-specific (DOM, vite/client types).
+  - `tsconfig.api.json`: API/Node-specific (Node types, ESNext).
 
 **Key Conventions**:
 - **No Frameworks**: Use standard DOM/Canvas APIs. No React/Vue.
 - **State**: `GameEngine` holds truth. `GameRenderer` is stateless visualization.
 - **Types**: Defined in `src/engine/types.ts` (`Grid` is flattened 1D array).
-- **Styling**: `styles.css` (variables + utility classes).
+- **Styling**: `public/styles.css` (linked in `index.html`). Managed manually with `build.js` for versioning.
+- **PWA**: `vite-plugin-pwa` handles Service Worker for offline play. Uses `navigateFallback: "index.html"` for offline launch. Root `manifest.webmanifest`.
+- **iOS Layout**: Uses `viewport-fit=cover` and handles safe areas. On mobile, layout is bottom-up: tray at very bottom (above safe area), grid above tray. Added `ResizeObserver` and launch timeouts in `GameRenderer` to ensure robust layout in PWA standalone mode. Added `ignoreURLParametersMatching` to Workbox to prevent version query params from breaking the offline cache.
 - **Security**: `.env*` files are ignored in `.gitignore` and must never be committed.
 
 **Key Files**:

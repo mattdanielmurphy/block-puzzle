@@ -4,21 +4,49 @@ import { defineConfig } from "vite"
 export default defineConfig({
 	plugins: [
 		VitePWA({
-			selfDestroying: true,
-			filename: "service-worker.js",
-			injectRegister: false, // We'll keep our manual registration in index.html for now, or let PWA handle it
-			manifest: false, // We already have a manifest.json
+			devOptions: {
+				enabled: true,
+				type: "module", // Add this for dev testing
+			},
+			strategies: "generateSW", // ← Add this explicitly
+			registerType: "autoUpdate",
+			includeAssets: ["favicon.ico", "apple-touch-icon.png"], // ← Removed assets/*.jpg
+			workbox: {
+				globPatterns: ["**/*.{js,css,html,ico,png,svg,jpg,jpeg,json}"], // This already covers JPGs
+				navigateFallback: "index.html", // Remove leading slash
+				navigateFallbackDenylist: [/^\/api\//],
+				ignoreURLParametersMatching: [/^v$/], // Ignore the ?v= timestamp from build.js
+			},
+			manifest: {
+				name: "Blockdoku",
+				short_name: "Blockdoku",
+				start_url: "/",
+				scope: "/",
+				display: "standalone",
+				background_color: "#050815",
+				theme_color: "#303ce1ff",
+				description: "Offline Block Puzzle Game",
+				icons: [
+					{
+						src: "/apple-touch-icon.png",
+						sizes: "180x180",
+						type: "image/png",
+					},
+				],
+			},
 		}),
 	],
 	test: {
-		environment: "jsdom", // or 'node'
+		environment: "jsdom",
 	},
 	server: {
-		host: "0.0.0.0", // Force IPv4 binding (most compatible with iPhone)
-		port: 3000, // Use the port you confirmed works
+		allowedHosts: ["08b1d5688b96.ngrok-free.app", "blockdoku.vercel.app"],
+		host: "0.0.0.0",
+		port: 3000,
 		strictPort: true,
+		https: true,
 		hmr: {
-			host: "matt.local", // Tell the HMR client to use your network name
+			host: "matt.local",
 		},
 		proxy: {
 			"/api": {

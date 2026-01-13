@@ -1,0 +1,28 @@
+
+> block-puzzle@0.1.0 build /Users/matthewmurphy/projects/block-puzzle
+> node build.js
+
+Build started...
+Building frontend with Vite...
+[33mThe CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.[39m
+vite v6.4.1 building for production...
+transforming...
+✓ 19 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/registerSW.js                   0.13 kB
+dist/manifest.webmanifest            0.28 kB
+dist/index.html                      5.62 kB │ gzip:  1.85 kB
+dist/assets/bot-worker-CHE-Saz9.js  14.40 kB
+dist/assets/index-B6admPZt.js       92.20 kB │ gzip: 26.96 kB
+✓ built in 294ms
+
+PWA v1.2.0
+mode      generateSW
+precache  13 entries (493.95 KiB)
+files generated
+  dist/sw.js
+  dist/workbox-3105ea8d.js
+Compiling API routes TypeScript...
+Copying assets...
+Build complete! Output directory: ./dist

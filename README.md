@@ -7,7 +7,7 @@ An offline-first Block Sudoku puzzle game built with TypeScript, HTML5 Canvas, a
 /
 ├── index.html          # App Entry
 ├── styles.css          # Styling
-├── manifest.json       # PWA Manifest
+├── manifest.webmanifest # PWA Manifest
 ├── service-worker.js   # Service Worker (generated)
 ├── src/                # Source Code
 │   ├── main.ts         # Game Loop & Setup
@@ -54,7 +54,7 @@ An offline-first Block Sudoku puzzle game built with TypeScript, HTML5 Canvas, a
    ```
 
 3. **Deploy**:
-   Upload `index.html`, `styles.css`, `manifest.json`, `service-worker.js`, and the `dist/` folder to your static host.
+   Upload `index.html`, `styles.css`, `manifest.webmanifest`, `service-worker.js`, and the `dist/` folder to your static host.
 
 ## Testing
 Run the engine unit tests:

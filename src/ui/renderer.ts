@@ -21,9 +21,22 @@ export class GameRenderer {
 		const ctx = canvas.getContext("2d", { alpha: false })
 		if (!ctx) throw new Error("Could not get 2d context")
 		this.ctx = ctx
+
+		// Initial resize attempt
 		this.resize()
+
 		if (autoResize) {
 			window.addEventListener("resize", () => this.resize())
+
+			// More robust observer for PWAs/mobile where initial layout might be delayed
+			if (typeof ResizeObserver !== "undefined") {
+				const ro = new ResizeObserver(() => this.resize())
+				ro.observe(canvas)
+			}
+
+			// One final fallback for tricky mobile launch scenarios
+			setTimeout(() => this.resize(), 500)
+			setTimeout(() => this.resize(), 2000)
 		}
 	}
 
@@ -61,41 +74,85 @@ export class GameRenderer {
 	}
 
 	recalcLayout() {
+		const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || this.width < 600
 		const padding = this.height < 650 ? 5 : THEME.metrics.boardPadding
 		const availableW = this.width - padding * 2
-		// Board is square
-		// We want board to be as big as possible but leave room for tray
-		// Tray should be at bottom ~25-30%
 
-		const trayHeight = this.height * THEME.metrics.trayHeightRatio
-		const boardMaxH = this.height - trayHeight - padding * 2
+		if (isMobile) {
+			// MOBILE LAYOUT: Bottom-anchored (blocks + grid) with Header at TOP
+			// Gap will be between Header and Grid.
 
-		const boardSize = Math.min(availableW, boardMaxH)
+			// Get safe area
+			const safeAreaBottom = parseInt(getComputedStyle(document.documentElement).getPropertyValue("--safe-area-bottom") || "0", 10) || 0
 
-		const boardX = (this.width - boardSize) / 2
-		const boardY = padding // Top padding
+			// 1. Calculate tray height based on max piece height
+			// Use a slightly larger prelim board size for better grid scaling
+			const prelimBoardSize = Math.min(availableW, this.height * 0.7)
+			const prelimCellSize = (prelimBoardSize - (GRID_SIZE - 1) * THEME.metrics.cellGap) / GRID_SIZE
+			const trayCellSize = prelimCellSize * 0.6
+			const maxPieceHeight = trayCellSize * 5 + THEME.metrics.cellGap * 4
+			const trayBottomPadding = 10 + safeAreaBottom
+			const trayTopPadding = 10
+			const trayHeight = maxPieceHeight + trayBottomPadding + trayTopPadding
 
-		const cellSize = (boardSize - (GRID_SIZE - 1) * THEME.metrics.cellGap) / GRID_SIZE
+			const trayY = this.height - trayHeight
 
-		this.layout = {
-			boardRect: { x: boardX, y: boardY, w: boardSize, h: boardSize, cellSize },
-			trayRect: {
-				x: 0,
-				y: boardY + boardSize + padding,
-				w: this.width,
-				h: this.height - (boardY + boardSize + padding),
-				shapecenters: [], // calculated below
-			},
+			// 2. Position Grid as large as possible above tray
+			const boardMaxH = trayY - padding * 2
+			const boardSize = Math.min(availableW, boardMaxH)
+			const cellSize = (boardSize - (GRID_SIZE - 1) * THEME.metrics.cellGap) / GRID_SIZE
+
+			const boardX = (this.width - boardSize) / 2
+			const boardY = trayY - boardSize - padding // Anchor board right above tray
+
+			this.layout = {
+				boardRect: { x: boardX, y: boardY, w: boardSize, h: boardSize, cellSize },
+				trayRect: {
+					x: 0,
+					y: trayY,
+					w: this.width,
+					h: trayHeight,
+					shapecenters: [],
+				},
+			}
+
+			const slotW = this.width / 3
+			const cy = this.height - trayBottomPadding - maxPieceHeight / 2
+			this.layout.trayRect.shapecenters = [
+				{ x: slotW * 0.5, y: cy },
+				{ x: slotW * 1.5, y: cy },
+				{ x: slotW * 2.5, y: cy },
+			]
+		} else {
+			// DESKTOP LAYOUT: Centered, top-down positioning (original behavior)
+			const trayHeight = this.height * THEME.metrics.trayHeightRatio
+			const boardMaxH = this.height - trayHeight - padding * 2
+			const boardSize = Math.min(availableW, boardMaxH)
+			const cellSize = (boardSize - (GRID_SIZE - 1) * THEME.metrics.cellGap) / GRID_SIZE
+
+			const boardX = (this.width - boardSize) / 2
+			const boardY = padding // Top padding
+
+			this.layout = {
+				boardRect: { x: boardX, y: boardY, w: boardSize, h: boardSize, cellSize },
+				trayRect: {
+					x: 0,
+					y: boardY + boardSize + padding,
+					w: this.width,
+					h: this.height - (boardY + boardSize + padding),
+					shapecenters: [], // calculated below
+				},
+			}
+
+			// Calculate 3 slots for shapes in tray - centered
+			const slotW = this.width / 3
+			const cy = this.layout.trayRect.y + this.layout.trayRect.h / 2
+			this.layout.trayRect.shapecenters = [
+				{ x: slotW * 0.5, y: cy },
+				{ x: slotW * 1.5, y: cy },
+				{ x: slotW * 2.5, y: cy },
+			]
 		}
-
-		// Calculate 3 slots for shapes in tray
-		const slotW = this.width / 3
-		const cy = this.layout.trayRect.y + this.layout.trayRect.h / 2
-		this.layout.trayRect.shapecenters = [
-			{ x: slotW * 0.5, y: cy },
-			{ x: slotW * 1.5, y: cy },
-			{ x: slotW * 2.5, y: cy },
-		]
 	}
 
 	draw(
@@ -286,7 +343,7 @@ export class GameRenderer {
 					this.ctx.shadowBlur = 30
 				}
 
-				// Center the shape
+				// Center the shape at the calculated position
 				this.drawShapeCentered(shape, center.x, center.y, cellSize, isHighlighted)
 
 				this.ctx.globalAlpha = 1.0

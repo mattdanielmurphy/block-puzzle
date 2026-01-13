@@ -5,9 +5,7 @@ const { execSync } = require("child_process")
 // Configuration
 const DIST_DIR = path.join(__dirname, "dist")
 const ASSETS_TO_COPY = [
-	{ src: "index.html", dest: "index.html", transform: true },
 	{ src: "public/styles.css", dest: "styles.css" },
-	{ src: "manifest.json", dest: "manifest.json" },
 	{ src: "public/assets", dest: "assets", isDir: true },
 ]
 
