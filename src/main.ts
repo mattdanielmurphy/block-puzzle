@@ -10,6 +10,7 @@ import { Simulator } from "./simulation/simulator"
 import { THEME } from "./ui/theme"
 import { TutorialManager } from "./ui/tutorial"
 import { VERSION } from "./version"
+import { haptics } from "./haptics"
 import { inject } from "@vercel/analytics"
 
 const GAME_OVER_QUOTES = [
@@ -130,6 +131,7 @@ class GameApp {
 	private reliefUntil: number = 0
 	private wasInPanicState: boolean = false
 	private timerPanic: boolean = false
+	private prevTimerPanic: boolean = false // tracks transition edge for haptics
 	private handTimerRatio: number | null = null
 	private firstBlockPlaced: boolean = false
 	private chillMode: boolean = false
@@ -377,7 +379,7 @@ class GameApp {
 			() => {
 				// Start timer when tutorial ends
 				this.syncHandCountdown(Date.now())
-			}
+			},
 		)
 
 		requestAnimationFrame(this.loop.bind(this))
@@ -1291,7 +1293,7 @@ class GameApp {
 			if (data.ok && data.players && data.players.length > 0) {
 				console.log(
 					`[fetchAndShowPlayerSuggestions] Identified ${data.players.length} players. Scores:`,
-					data.players.map((p: any) => `${p.name}: ${p.best_score}`)
+					data.players.map((p: any) => `${p.name}: ${p.best_score}`),
 				)
 				this.cachedPlayerSuggestions = data.players
 				if (!fetchOnly) {
@@ -1707,7 +1709,13 @@ class GameApp {
 
 		if (this.handDeadline) {
 			const remaining = this.handDeadline - now
-			this.timerPanic = remaining <= 3000 && remaining > 0
+			const newPanic = remaining <= 3000 && remaining > 0
+			// Fire a single haptic pulse on the transition into panic
+			if (newPanic && !this.prevTimerPanic) {
+				haptics.timerPanic()
+			}
+			this.timerPanic = newPanic
+			this.prevTimerPanic = newPanic
 			// If timer hits zero and there are still blocks in the tray, end the game
 			if (remaining <= 0 && this.engine.currentShapes.some((s) => s !== null)) {
 				this.endGame()
@@ -1718,6 +1726,7 @@ class GameApp {
 			this.updateCountdownUI(Math.max(0, remaining))
 		} else {
 			this.timerPanic = false
+			this.prevTimerPanic = false
 			this.updateCountdownUI(null)
 		}
 	}
@@ -1725,6 +1734,8 @@ class GameApp {
 	private endGame() {
 		this.engine.isGameOver = true
 		this.handDeadline = null
+		this.prevTimerPanic = false
+		haptics.gameOver()
 		this.updateUI()
 		this.saveGameState()
 	}
@@ -1831,6 +1842,7 @@ class GameApp {
 				return
 			}
 			this.dragShape = shape
+			haptics.pickUp()
 			// Input manager handles calling move/end
 		} else {
 			this.input.dragState = null // Cancel if empty slot
@@ -1933,8 +1945,14 @@ class GameApp {
 		const anchorX = x + offset.x
 		const anchorY = y + offset.y
 
+		const prevGhost = this.ghostPos
 		const placement = this.getBestPlacement(this.dragShape, anchorX, anchorY)
 		this.ghostPos = placement
+
+		// Haptic snap: fire when ghost transitions from null → valid position
+		if (placement && !prevGhost) {
+			haptics.snap()
+		}
 	}
 
 	onDragEnd(r: number, c: number) {
@@ -1991,6 +2009,10 @@ class GameApp {
 						this.renderer.addEffect(new BlockClearEffect(pt.r, pt.c))
 					})
 				}
+
+				// Haptic feedback — scale by how many lines/cols/boxes were cleared
+				const totalCleared = result.clearedRows.length + result.clearedCols.length + result.clearedBoxes.length
+				haptics.place(totalCleared)
 
 				if (result.moveMultiplier && result.moveMultiplier > 1) {
 					const { boardRect } = this.renderer.layout

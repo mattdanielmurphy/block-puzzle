@@ -5,3 +5,4 @@ dist
 .vercel
 \n# Environment variables\n.env*
 .env*.local
+PENDING_CHANGES.md
