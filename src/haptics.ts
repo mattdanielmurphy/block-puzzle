@@ -23,8 +23,30 @@ class HapticsManager {
 		console.log(`[haptics] init — isTouch=${isTouch}, debug=${debug}, isSupported=${WebHaptics.isSupported}`)
 		this.haptics = new WebHaptics({ debug })
 
+		// Monkey-patch to fix iOS haptics: WebHaptics 0.0.6 uses display:none which kills iOS haptics.
+		// We override ensureDOM to use a "visually hidden" style instead.
+		if (!WebHaptics.isSupported) {
+			const h = this.haptics as any
+			if (h.ensureDOM) {
+				const originalEnsureDOM = h.ensureDOM.bind(h)
+				h.ensureDOM = () => {
+					originalEnsureDOM()
+					if (h.hapticLabel && h.hapticLabel.style.display === "none") {
+						const checkbox = h.hapticLabel.querySelector("input")
+						// Use "visually hidden" styles so it stays in the DOM and functional for iOS haptics
+						const hiddenStyle =
+							"position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;opacity:0;pointer-events:none;"
+						h.hapticLabel.style.cssText = hiddenStyle
+						if (checkbox) {
+							checkbox.style.cssText = hiddenStyle + "appearance:auto;-webkit-appearance:auto;"
+						}
+					}
+				}
+			}
+		}
+
 		// --- DEBUG: add a visible test button so we can verify web-haptics works ---
-		if (typeof document !== "undefined") {
+		if (import.meta.env.DEV && typeof document !== "undefined") {
 			const btn = document.createElement("button")
 			btn.textContent = "🫨 Test Haptic"
 			btn.style.cssText =
