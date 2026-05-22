@@ -2,16 +2,30 @@ name: Supabase Keep-Alive
 
 on:
   schedule:
-    # Runs at 00:00 every Monday (well within the 7-day limit)
-    - cron: '0 0 * * 1'
-  workflow_dispatch: # Allows you to run it manually for testing
+    # Daily at 12:00 UTC (well within Supabase ~7-day inactivity pause)
+    - cron: "0 12 * * *"
+  workflow_dispatch:
 
 jobs:
   ping_supabase:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping Database
-        run: |
-          curl -X GET "${{ secrets.SUPABASE_URL }}/rest/v1/scores?select=*&limit=1" \
-          -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
-          -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}"
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Ping database
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: node scripts/keep_alive.js

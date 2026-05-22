@@ -10,7 +10,8 @@
     "watch": "pnpm dlx -y nodemon --watch src --watch api --watch index.html --watch styles.css --ext ts,html,css --exec \"pnpm run build\"",
     "dev:web": "vite",
     "dev:api": "vercel dev --listen 3001",
-    "start": "concurrently -k -n web,api -c cyan,magenta \"npm:dev:web\" \"npm:dev:api\""
+    "start": "concurrently -k -n web,api -c cyan,magenta \"npm:dev:web\" \"npm:dev:api\"",
+    "keep-alive": "node scripts/keep_alive.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.88.0",
