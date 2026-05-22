@@ -9,6 +9,7 @@ on:
 jobs:
   ping_supabase:
     runs-on: ubuntu-latest
+    environment: Production
     steps:
       - name: Ping database
         env:
