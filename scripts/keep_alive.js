@@ -3,7 +3,8 @@
  * Uses anon key + read-only HEAD-style queries on production tables.
  *
  * Env: SUPABASE_URL, SUPABASE_ANON_KEY (or SUPABASE_SERVICE_ROLE_KEY as fallback)
- * GitHub Actions: set the same names as repository secrets.
+ * GitHub Actions: .github/workflows/keep_alive.yml (curl, no pnpm).
+ * Local: pnpm keep-alive with the same env vars.
  */
 const { createClient } = require("@supabase/supabase-js")
 

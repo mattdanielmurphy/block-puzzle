@@ -10,22 +10,20 @@ jobs:
   ping_supabase:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: "pnpm"
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
       - name: Ping database
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-        run: node scripts/keep_alive.js
+        run: |
+          set -euo pipefail
+          for table in scores players; do
+            code=$(curl -sS -o /dev/null -w "%{http_code}" \
+              -X GET "${SUPABASE_URL}/rest/v1/${table}?select=*&limit=1" \
+              -H "apikey: ${SUPABASE_ANON_KEY}" \
+              -H "Authorization: Bearer ${SUPABASE_ANON_KEY}")
+            if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
+              echo "keep-alive failed for ${table}: HTTP ${code}"
+              exit 1
+            fi
+            echo "keep-alive ${table} ok (HTTP ${code})"
+          done
