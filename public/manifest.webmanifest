@@ -1,0 +1,17 @@
+{
+  "name": "Blockdoku",
+  "short_name": "Blockdoku",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#050815",
+  "theme_color": "#303ce1ff",
+  "description": "Offline Block Puzzle Game",
+  "icons": [
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ]
+}

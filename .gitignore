@@ -4,5 +4,5 @@ dist
 .gemini
 .vercel
 \n# Environment variables\n.env*
-.env*.local
+.env*
 PENDING_CHANGES.md

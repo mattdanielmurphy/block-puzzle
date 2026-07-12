@@ -13,6 +13,16 @@ import { VERSION } from "./version"
 import { haptics } from "./haptics"
 import { inject } from "@vercel/analytics"
 
+// In dev mode, ensure any broken PWA service workers from previous runs are unregistered
+if (import.meta.env.DEV && "serviceWorker" in navigator) {
+	navigator.serviceWorker.getRegistrations().then((registrations) => {
+		for (const registration of registrations) {
+			registration.unregister()
+			console.log("Unregistered dev service worker.")
+		}
+	})
+}
+
 const GAME_OVER_QUOTES = [
 	"A valiant effort.",
 	"It's about the friends you made along the way.",

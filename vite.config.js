@@ -5,7 +5,7 @@ export default defineConfig({
 	plugins: [
 		VitePWA({
 			devOptions: {
-				enabled: true,
+				enabled: false,
 				type: "module", // Add this for dev testing
 			},
 			strategies: "generateSW", // ← Add this explicitly
@@ -13,7 +13,7 @@ export default defineConfig({
 			includeAssets: ["favicon.ico", "apple-touch-icon.png"], // ← Removed assets/*.jpg
 			workbox: {
 				globPatterns: ["**/*.{js,css,html,ico,png,svg,jpg,jpeg,json}"], // This already covers JPGs
-				navigateFallback: "index.html", // Remove leading slash
+				navigateFallback: "/index.html",
 				navigateFallbackDenylist: [/^\/api\//],
 				ignoreURLParametersMatching: [/^v$/], // Ignore the ?v= timestamp from build.js
 			},
@@ -42,8 +42,7 @@ export default defineConfig({
 	server: {
 		allowedHosts: ["08b1d5688b96.ngrok-free.app", "blockdoku.vercel.app"],
 		host: "0.0.0.0",
-		port: 3000,
-		strictPort: true,
+		port: process.env.PORT ? parseInt(process.env.PORT) : 3000,
 		hmr: {
 			host: "matt.local",
 		},
