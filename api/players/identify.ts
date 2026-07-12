@@ -2,11 +2,11 @@ import * as http from "../_lib/http"
 import * as ip from "../_lib/ip"
 
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { db, supabase } from "../_lib/supabase"
+import { dbName, pool, connectionString } from "../_lib/db"
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
 	if (req.method !== "GET") return http.errorJson(res, 405, "METHOD_NOT_ALLOWED", "Use GET")
-	if (!supabase) return http.json(res, 200, { ok: true, players: [] })
+	if (!connectionString) return http.json(res, 200, { ok: true, players: [] })
 
 	const clientIp = ip.getClientIp(req)
 	const userAgent = (req.headers["user-agent"] as string) || "UNKNOWN"
@@ -27,44 +27,38 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 		}
 
 		// 2. Search player_identities for matching IP or User Agent
-		// We join with the players table to get the name and scores
-		const playersTable = db("players")
-		let query = supabase.from(db("player_identities")).select(`
-				ip_address,
-				user_agent,
-				last_seen,
-				players: ${playersTable} (
-					id,
-					name,
-					best_score,
-					chill_best_score
-				)
-			`)
+		const identitiesTable = dbName("player_identities")
+		const playersTable = dbName("players")
 
-		// Filter by IP (Exact or Prefix) OR User Agent
-		const uaMatch = `user_agent.eq.${userAgent}`
-		const ipMatch = partialIpMatch ? `ip_address.like.${partialIpMatch}%` : `ip_address.eq.${clientIp}`
+		let queryStr = `
+			SELECT 
+				i.ip_address, 
+				i.user_agent, 
+				i.last_seen as identity_last_seen,
+				p.id as player_id,
+				p.name,
+				p.best_score,
+				p.chill_best_score
+			FROM ${identitiesTable} i
+			JOIN ${playersTable} p ON i.player_id = p.id
+			WHERE i.user_agent = $1 OR i.ip_address = $2
+		`
+		const params = [userAgent, clientIp]
 
-		query = query.or(`${ipMatch},${uaMatch}`)
-
-		const { data, error } = await query.order("last_seen", { ascending: false }).limit(20)
-		const identities = data as any[]
-
-		if (error) {
-			console.error("Identify: Query error:", error)
-			throw error
+		if (partialIpMatch) {
+			queryStr += ` OR i.ip_address LIKE $3`
+			params.push(`${partialIpMatch}%`)
 		}
 
+		queryStr += ` ORDER BY i.last_seen DESC LIMIT 20`
+
+		const { rows: identities } = await pool.query(queryStr, params)
+
 		// 3. Score and uniqueify the players found
-		// Scoring:
-		// +10: Exact IP match
-		// +5: User Agent match
-		// +2: Partial IP (Network) match
 		const playersMap = new Map<string, { id: string; name: string; score: number; best_score: number; chill_best_score: number; last_seen: string }>()
 
-		for (const identity of identities || []) {
-			const p: any = identity.players
-			if (!p) continue
+		for (const identity of identities) {
+			if (!identity.player_id) continue
 
 			let matchScore = 0
 			if (identity.ip_address === clientIp) matchScore += 10
@@ -72,20 +66,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
 			if (identity.user_agent === userAgent) matchScore += 5
 
-			const existing = playersMap.get(p.id)
+			const existing = playersMap.get(identity.player_id)
+			const lastSeen = identity.identity_last_seen.toISOString()
+
 			if (!existing || matchScore > existing.score) {
-				playersMap.set(p.id, {
-					id: p.id,
-					name: p.name,
+				playersMap.set(identity.player_id, {
+					id: identity.player_id,
+					name: identity.name,
 					score: matchScore,
-					best_score: p.best_score || 0,
-					chill_best_score: p.chill_best_score || 0,
-					last_seen: identity.last_seen,
+					best_score: identity.best_score || 0,
+					chill_best_score: identity.chill_best_score || 0,
+					last_seen: lastSeen,
 				})
 			} else if (existing && matchScore === existing.score) {
-				// If scores are equal, keep the most recently seen one
-				if (new Date(identity.last_seen) > new Date(existing.last_seen)) {
-					existing.last_seen = identity.last_seen
+				if (new Date(lastSeen) > new Date(existing.last_seen)) {
+					existing.last_seen = lastSeen
 				}
 			}
 		}

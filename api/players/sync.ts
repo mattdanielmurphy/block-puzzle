@@ -3,11 +3,11 @@ import * as ip from "../_lib/ip"
 import * as validation from "../_lib/validation"
 
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { db, supabase } from "../_lib/supabase"
+import { dbName, pool, connectionString } from "../_lib/db"
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
 	if (req.method !== "POST") return http.errorJson(res, 405, "METHOD_NOT_ALLOWED", "Use POST")
-	if (!supabase) return http.errorJson(res, 503, "SERVICE_UNAVAILABLE", "Database not available")
+	if (!connectionString) return http.errorJson(res, 503, "SERVICE_UNAVAILABLE", "Database not available")
 
 	const clientIp = ip.getClientIp(req)
 	const userAgent = (req.headers["user-agent"] as string) || "UNKNOWN"
@@ -26,47 +26,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 	const name = nameV.value
 
 	try {
-		// 1. Check if this player NAME already exists (ignoring fingerprint initially)
-		// We want to enforce "One Player Entity per Name" to keep the UUID consistent.
-		// If they exist, we UPDATE their fingerprint to the current one.
-		// This sacrifices "multi-device concurrent memory" for "consistent UUID".
-		const { data: existingPlayer } = await supabase.from(db("players")).select("id, best_score, chill_best_score").eq("name", name).limit(1).maybeSingle()
+		const existingRes = await pool.query(`SELECT id, best_score, chill_best_score FROM ${dbName("players")} WHERE name = $1 LIMIT 1`, [name])
+		const existingPlayer = existingRes.rows.length > 0 ? existingRes.rows[0] : null
 
 		let playerId: string
 
 		if (existingPlayer) {
 			playerId = existingPlayer.id
 		} else {
-			// Create new player record if they've never played before
-			const { data: newPlayer, error: insertError } = await supabase.from(db("players")).insert({ name: name }).select("id").single()
-
-			if (insertError) {
+			try {
+				const newPlayerRes = await pool.query(`INSERT INTO ${dbName("players")} (name) VALUES ($1) RETURNING id`, [name])
+				playerId = newPlayerRes.rows[0].id
+			} catch (insertError) {
 				console.error("Sync Player: Error inserting player:", insertError)
 				return http.errorJson(res, 500, "DATABASE_ERROR", "Could not sync player")
 			}
-			playerId = newPlayer.id
 		}
 
-		// 2. Upsert the current identity (IP + UA) for this player
-		// This automatically handles having multiple IPs/UAs for one player
-		await supabase.from(db("player_identities")).upsert(
-			{
-				player_id: playerId,
-				ip_address: clientIp,
-				user_agent: userAgent,
-				last_seen: new Date().toISOString(),
-			},
-			{
-				onConflict: "player_id,ip_address,user_agent",
-			}
-		)
+		await pool.query(`
+			INSERT INTO ${dbName("player_identities")} (player_id, ip_address, user_agent, last_seen)
+			VALUES ($1, $2, $3, $4)
+			ON CONFLICT (player_id, ip_address, user_agent) DO UPDATE SET last_seen = EXCLUDED.last_seen
+		`, [playerId, clientIp, userAgent, new Date().toISOString()])
 
-		// 3. Mark the player themselves as last seen
-		await supabase.from(db("players")).update({ last_seen: new Date().toISOString() }).eq("id", playerId)
+		await pool.query(`UPDATE ${dbName("players")} SET last_seen = $1 WHERE id = $2`, [new Date().toISOString(), playerId])
 
-		// 3. Link existing scores with this name to this new playerId if they don't have one
-		await supabase.from(db("scores")).update({ player_id: playerId }).eq("name", name).is("player_id", null)
-		await supabase.from(db("chill_scores")).update({ player_id: playerId }).eq("name", name).is("player_id", null)
+		await pool.query(`UPDATE ${dbName("scores")} SET player_id = $1 WHERE name = $2 AND player_id IS NULL`, [playerId, name])
+		await pool.query(`UPDATE ${dbName("chill_scores")} SET player_id = $1 WHERE name = $2 AND player_id IS NULL`, [playerId, name])
 
 		return http.json(res, 200, {
 			ok: true,
