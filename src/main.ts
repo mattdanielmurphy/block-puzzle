@@ -995,7 +995,7 @@ class GameApp {
 	private async fetchLeaderboardScores(): Promise<Array<{ name: string; score: number }>> {
 		try {
 			const mode = this.chillMode ? "chill" : "normal"
-			const resp = await fetch(`/api/leaderboard?limit=100&mode=${mode}`)
+			const resp = await this.apiFetch(`/api/leaderboard?limit=100&mode=${mode}`)
 			if (!resp.ok) {
 				throw new Error(`Leaderboard request failed with status ${resp.status}`)
 			}
@@ -1033,7 +1033,7 @@ class GameApp {
 				titleEl.textContent = `Leaderboard (${this.chillMode ? "Chill" : "Normal"})`
 			}
 
-			const resp = await fetch(`/api/leaderboard?limit=100&mode=${mode}`)
+			const resp = await this.apiFetch(`/api/leaderboard?limit=100&mode=${mode}`)
 			if (!resp.ok) {
 				throw new Error(`Leaderboard request failed with status ${resp.status}`)
 			}

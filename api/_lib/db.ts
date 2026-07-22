@@ -11,8 +11,8 @@ let localUrl = ""
 try {
 	const envFile = fs.readFileSync(path.resolve(process.cwd(), ".env.local"), "utf-8")
 	// Try MY_DB_URL first, then POSTGRES_URL
-	const matchMyDb = envFile.match(/MY_DB_URL="([^"]+)"/)
-	const matchPg = envFile.match(/POSTGRES_URL="([^"]+)"/)
+	const matchMyDb = envFile.match(/MY_DB_URL=["']?([^"'\s\r\n]+)["']?/)
+	const matchPg = envFile.match(/POSTGRES_URL=["']?([^"'\s\r\n]+)["']?/)
 	if (matchMyDb) localUrl = matchMyDb[1]
 	else if (matchPg) localUrl = matchPg[1]
 } catch (e) {
