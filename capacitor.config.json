@@ -1,0 +1,14 @@
+{
+  "appId": "ca.mattmurphy.blockdoku",
+  "appName": "Blockdoku",
+  "webDir": "dist",
+  "backgroundColor": "#050815",
+  "ios": {
+    "contentInset": "never",
+    "scrollEnabled": false,
+    "backgroundColor": "#050815"
+  },
+  "plugins": {
+    "CapacitorHttp": { "enabled": true }
+  }
+}

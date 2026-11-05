@@ -10,6 +10,7 @@ export default defineConfig({
 			},
 			strategies: "generateSW", // ← Add this explicitly
 			registerType: "autoUpdate",
+			injectRegister: process.env.CAP ? false : "auto", // no service worker inside the Capacitor app
 			includeAssets: ["favicon.ico", "apple-touch-icon.png"], // ← Removed assets/*.jpg
 			workbox: {
 				globPatterns: ["**/*.{js,css,html,ico,png,svg,jpg,jpeg,json}"], // This already covers JPGs

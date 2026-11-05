@@ -477,6 +477,11 @@ class GameApp {
 			init.headers = headers
 			console.log(`[apiFetch] Request to ${input.toString()} with client IP: ${this.clientPublicIp}`)
 		}
+		// In the native iOS app the page is served from capacitor://localhost, so relative
+		// /api calls must go to the hosted backend.
+		if (typeof input === "string" && input.startsWith("/api/") && location.protocol === "capacitor:") {
+			input = "https://blockdoku.vercel.app" + input
+		}
 		return fetch(input, init)
 	}
 
