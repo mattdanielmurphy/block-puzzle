@@ -6,3 +6,4 @@ dist
 \n# Environment variables\n.env*
 .env*
 PENDING_CHANGES.md
+ios/tmp
