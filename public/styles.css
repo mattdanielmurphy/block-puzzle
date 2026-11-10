@@ -1461,3 +1461,8 @@ body.dev-mode {
     #app #game-over-overlay p { margin: 4px 0; }
     #app #game-over-quote-container { min-height: 2em; margin: 4px 0; }
 }
+
+/* Bigger windows (Mac, iPad) grow the board: width follows the window height, never just 600px. */
+#app {
+    max-width: max(600px, calc(100dvh * 0.62));
+}

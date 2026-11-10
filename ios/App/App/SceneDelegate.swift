@@ -39,20 +39,29 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 /// On a Mac the game opens as a portrait window that fits the board and the piece tray,
 /// centred on screen, and then remembers whatever size the player resizes it to.
 enum MacWindow {
-    static let defaultSize = CGSize(width: 470, height: 820)
+    /// "Designed for iPad" apps are drawn at 77% on a Mac: frame sizes are in iPad points,
+    /// the screen and frame origins are in Mac points.
+    static let macScale: CGFloat = 0.77
     static let minimumSize = CGSize(width: 380, height: 640)
-    private static let key = "macWindowSize"
-    private static var settling = false
+    private static let key = "macWindowSize.v2"
+    private static var settling = true // macOS restores the old frame before configure runs; ignore it
+
+    /// Portrait window about 85% of the screen tall (in iPad points).
+    static func defaultSize(for screen: CGRect) -> CGSize {
+        let h = min(screen.height * 0.85, 1000) / macScale
+        return CGSize(width: (h * 0.62).rounded(), height: h.rounded())
+    }
 
     static func configure(_ scene: UIWindowScene) {
-        var size = defaultSize
+        let screen = scene.screen.bounds
+        var size = defaultSize(for: screen)
         if let saved = UserDefaults.standard.string(forKey: key) {
             let s = NSCoder.cgSize(for: saved)
-            if s.width >= minimumSize.width && s.height >= minimumSize.height { size = s }
+            // Only trust a remembered size that is portrait and at least the minimum.
+            if s.width >= minimumSize.width && s.height >= minimumSize.height && s.height >= s.width { size = s }
         }
-        let screen = scene.screen.bounds
-        size.width = min(size.width, screen.width - 40)
-        size.height = min(size.height, screen.height - 60)
+        size.width = min(size.width, (screen.width - 40) / macScale)
+        size.height = min(size.height, (screen.height - 60) / macScale)
         NSLog("[MacWindow] configure screen=\(screen) size=\(size)")
 
         // Pin the size (min = max) so macOS opens the window at it, then let the player resize.
@@ -61,7 +70,8 @@ enum MacWindow {
         scene.sizeRestrictions?.maximumSize = size
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
             if #available(iOS 16.0, *) {
-                let origin = CGPoint(x: (screen.width - size.width) / 2, y: max(25, (screen.height - size.height) / 2))
+                let mac = CGSize(width: size.width * macScale, height: size.height * macScale)
+                let origin = CGPoint(x: ((screen.width - mac.width) / 2).rounded(), y: max(30, ((screen.height - mac.height) / 2).rounded()))
                 scene.requestGeometryUpdate(.Mac(systemFrame: CGRect(origin: origin, size: size))) { error in
                     NSLog("[MacWindow] geometry request failed: \(error)")
                 }
@@ -79,6 +89,12 @@ enum MacWindow {
         guard !settling else { return }
         let size = scene.coordinateSpace.bounds.size
         guard size.width >= minimumSize.width, size.height >= minimumSize.height else { return }
-        UserDefaults.standard.set(NSCoder.string(for: size), forKey: key)
+        // Ignore the 1-2 pt the system adds on each launch, so the size doesn't creep.
+        if let saved = UserDefaults.standard.string(forKey: key) {
+            let s = NSCoder.cgSize(for: saved)
+            if abs(s.width - size.width) < 4 && abs(s.height - size.height) < 4 { return }
+        }
+        let rounded = CGSize(width: size.width.rounded(), height: size.height.rounded())
+        UserDefaults.standard.set(NSCoder.string(for: rounded), forKey: key)
     }
 }
