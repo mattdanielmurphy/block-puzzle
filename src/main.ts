@@ -809,6 +809,7 @@ class GameApp {
 			toggleSound()
 		})
 		if (!haptics.available) document.getElementById("haptics-row")?.classList.add("hidden")
+		window.addEventListener("haptics-available", () => document.getElementById("haptics-row")?.classList.remove("hidden"))
 		if (hapticsToggle) {
 			hapticsToggle.checked = haptics.enabled
 			hapticsToggle.addEventListener("change", () => {
@@ -1913,6 +1914,9 @@ class GameApp {
 	}
 
 	onDragStart(index: number) {
+		this.dragLast = null
+		this.dragVel = 0
+		this.dragInside = { h: true, top: true }
 		if (this.engine.isGameOver || this.isPaused) return
 		const shape = this.engine.currentShapes[index]
 		if (shape) {
@@ -2034,7 +2038,46 @@ class GameApp {
 		// Haptic snap: fire when ghost transitions from null → valid position
 		if (placement && !prevGhost) {
 			haptics.snap()
+		} else if (placement && prevGhost && (placement.r !== prevGhost.r || placement.c !== prevGhost.c)) {
+			// A tiny tick each time the piece moves one cell on the board.
+			haptics.tick()
 		}
+		this.dragWallHaptics(x, y, anchorX, anchorY)
+	}
+
+	/** Drag feel: track pointer speed and "thud" when the piece is shoved past a board edge. */
+	private dragVel = 0
+	private dragLast: { x: number; y: number; t: number } | null = null
+	private dragInside = { h: true, top: true }
+	private dragWallHaptics(x: number, y: number, anchorX: number, anchorY: number) {
+		const now = performance.now()
+		if (this.dragLast) {
+			const dt = Math.max(1, now - this.dragLast.t)
+			const v = Math.hypot(x - this.dragLast.x, y - this.dragLast.y) / dt // px per ms
+			this.dragVel = this.dragVel * 0.6 + v * 0.4
+		}
+		this.dragLast = { x, y, t: now }
+		if (!this.dragShape) return
+		const { boardRect } = this.renderer.layout
+		const pitch = boardRect.cellSize + THEME.metrics.cellGap
+		let maxR = 0,
+			maxC = 0
+		this.dragShape.cells.forEach((p) => {
+			maxR = Math.max(maxR, p.r)
+			maxC = Math.max(maxC, p.c)
+		})
+		const w = maxC + 1,
+			h = maxR + 1
+		const colF = (anchorX - boardRect.x) / pitch
+		const rowF = (anchorY - boardRect.y) / pitch
+		const overBoardRows = rowF + h > 0.5 && rowF < GRID_SIZE - 0.5
+		const insideH = colF >= -0.5 && colF + w <= GRID_SIZE + 0.5
+		const insideTop = rowF >= -0.5
+		// Speed in board-cells per 100ms, mapped to 0..1 strength (a quick shove ≈ 1).
+		const strength = Math.min(1, ((this.dragVel * 100) / pitch) / 3)
+		if (overBoardRows && this.dragInside.h && !insideH && strength > 0.12) haptics.slam(strength)
+		if (this.dragInside.top && !insideTop && insideH && strength > 0.12) haptics.slam(strength)
+		this.dragInside = { h: insideH || !overBoardRows, top: insideTop }
 	}
 
 	onDragEnd(r: number, c: number) {
@@ -2356,6 +2399,7 @@ window.onload = () => {
 			THEME.colors.background = "#050815"
 			localStorage.setItem("bp_tutorial_completed", "true")
 			;(window as any).__app = app
+			;(window as any).__haptics = haptics
 			runDemo(app)
 		}
 	}

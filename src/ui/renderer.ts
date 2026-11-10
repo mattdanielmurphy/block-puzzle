@@ -59,6 +59,14 @@ export class GameRenderer {
 	}
 
 	resize = () => {
+		// Big windows (Mac, iPad) scale the header, buttons and text up with the window; phones stay at 1.
+		const uiScale = Math.max(1, Math.min(1.6, window.innerWidth / 440, window.innerHeight / 760))
+		const rootStyle = document.documentElement.style
+		const scaleStr = uiScale.toFixed(3)
+		if (rootStyle.getPropertyValue("--ui-scale") !== scaleStr) {
+			rootStyle.setProperty("--ui-scale", scaleStr)
+			rootStyle.fontSize = `${16 * uiScale}px`
+		}
 		const dpr = window.devicePixelRatio || 1
 		const rect = this.canvas.getBoundingClientRect()
 		if (rect.width === 0 || rect.height === 0) return

@@ -521,7 +521,7 @@ canvas {
     margin: 20px 0;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: calc(10px * var(--ui-scale, 1));
     align-items: center;
 }
 
@@ -1294,8 +1294,8 @@ body.dev-mode {
     align-items: center;
     column-gap: 6px;
     min-height: 0;
-    padding: 18px 0 14px;
-    padding-top: calc(max(10px, var(--safe-area-top)) + 14px);
+    padding: 18px 0 calc(14px * var(--ui-scale, 1));
+    padding-top: calc(max(10px, var(--safe-area-top)) + 14px * var(--ui-scale, 1));
 }
 
 /* Buttons stack vertically on each side (Matt, 2026-11-10). */
@@ -1315,13 +1315,13 @@ body.dev-mode {
 }
 
 #app .icon-btn {
-    --size: clamp(34px, 9vw, 40px);
+    --size: calc(clamp(34px, 9vw, 40px) * var(--ui-scale, 1));
     width: var(--size);
     height: var(--size);
     padding: 0;
     margin: 0;
     border: none;
-    border-radius: 12px;
+    border-radius: calc(12px * var(--ui-scale, 1));
     font-size: 1rem;
     background: linear-gradient(145deg, #10183a, #0a1026);
     box-shadow: 0 0 0 1.5px rgba(126, 224, 244, 0.22), 0 4px 14px rgba(0, 0, 0, 0.35);
@@ -1364,12 +1364,12 @@ body.dev-mode {
 #app .score-board {
     display: flex;
     align-items: center;
-    gap: clamp(10px, 4vw, 22px);
+    gap: calc(clamp(10px, 4vw, 22px) * var(--ui-scale, 1));
 }
 
 #app .score-label {
     width: auto;
-    min-width: clamp(48px, 13vw, 66px);
+    min-width: calc(clamp(48px, 13vw, 66px) * var(--ui-scale, 1));
     font-size: 0.7rem;
     letter-spacing: 0.08em;
     color: #8aa2c8;
@@ -1388,7 +1388,7 @@ body.dev-mode {
 
 #app #status-face {
     /* Much bigger face (Matt, 2026-11-10) */
-    --face: clamp(96px, 30vw, 132px);
+    --face: calc(clamp(96px, 30vw, 132px) * var(--ui-scale, 1));
     width: var(--face);
     height: var(--face);
     scale: none;

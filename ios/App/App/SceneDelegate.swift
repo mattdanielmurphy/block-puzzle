@@ -8,7 +8,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         guard let windowScene = scene as? UIWindowScene else { return }
 
         window = UIWindow(windowScene: windowScene)
-        window?.rootViewController = CAPBridgeViewController()
+        window?.rootViewController = GameViewController()
         window?.makeKeyAndVisible()
 
         if ProcessInfo.processInfo.isiOSAppOnMac {
@@ -96,5 +96,64 @@ enum MacWindow {
         }
         let rounded = CGSize(width: size.width.rounded(), height: size.height.rounded())
         UserDefaults.standard.set(NSCoder.string(for: rounded), forKey: key)
+    }
+}
+
+/// The web view's root controller, with the Mac trackpad haptics bridge registered.
+class GameViewController: CAPBridgeViewController {
+    override open func capacitorDidLoad() {
+        bridge?.registerPluginInstance(MacHapticsPlugin())
+    }
+}
+
+/// Trackpad haptics for the Mac ("Designed for iPad" has no public API for them, but AppKit's
+/// NSHapticFeedbackManager is loaded in the process, so it is reached through the runtime).
+/// On iPhone/iPad the class doesn't exist and every call is a no-op.
+@objc(MacHapticsPlugin)
+public class MacHapticsPlugin: CAPPlugin, CAPBridgedPlugin {
+    public let identifier = "MacHapticsPlugin"
+    public let jsName = "MacHaptics"
+    public let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "available", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "perform", returnType: CAPPluginReturnPromise),
+    ]
+
+    @objc func available(_ call: CAPPluginCall) {
+        call.resolve(["value": MacTrackpad.performer != nil])
+    }
+
+    /// pattern: 0 generic, 1 alignment, 2 level change. count/gapMs repeat it.
+    @objc func perform(_ call: CAPPluginCall) {
+        let pattern = call.getInt("pattern") ?? 0
+        let count = max(1, min(call.getInt("count") ?? 1, 5))
+        let gap = Double(call.getInt("gapMs") ?? 80) / 1000
+        for i in 0..<count {
+            DispatchQueue.main.asyncAfter(deadline: .now() + gap * Double(i)) { MacTrackpad.perform(pattern) }
+        }
+        call.resolve()
+    }
+}
+
+enum MacTrackpad {
+    private typealias PerformFn = @convention(c) (AnyObject, Selector, Int, UInt) -> Void
+    private static let sel = NSSelectorFromString("performFeedbackPattern:performanceTime:")
+
+    static let performer: NSObject? = {
+        guard ProcessInfo.processInfo.isiOSAppOnMac,
+              let cls = NSClassFromString("NSHapticFeedbackManager") as? NSObject.Type,
+              cls.responds(to: NSSelectorFromString("defaultPerformer")),
+              let p = cls.perform(NSSelectorFromString("defaultPerformer"))?.takeUnretainedValue() as? NSObject,
+              p.responds(to: sel) else {
+            NSLog("[MacHaptics] not available")
+            return nil
+        }
+        NSLog("[MacHaptics] ready")
+        return p
+    }()
+
+    static func perform(_ pattern: Int) {
+        guard let p = performer else { return }
+        let fn = unsafeBitCast(p.method(for: sel), to: PerformFn.self)
+        fn(p, sel, pattern, 1) // performanceTime 1 = now
     }
 }
