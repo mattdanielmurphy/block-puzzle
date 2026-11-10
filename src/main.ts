@@ -2039,8 +2039,12 @@ class GameApp {
 		if (placement && !prevGhost) {
 			haptics.snap()
 		} else if (placement && prevGhost && (placement.r !== prevGhost.r || placement.c !== prevGhost.c)) {
-			// A tiny tick each time the piece moves one cell on the board.
-			haptics.tick()
+			// A tick each time the piece moves one cell; harder when it crosses a 3×3 box line.
+			const box = (n: number) => Math.floor(n / 3)
+			haptics.tick(box(placement.r) !== box(prevGhost.r) || box(placement.c) !== box(prevGhost.c))
+		} else if (!placement && prevGhost && this.dragInside.h) {
+			// Slid onto a spot where the piece can't go.
+			haptics.unsnap()
 		}
 		this.dragWallHaptics(x, y, anchorX, anchorY)
 	}

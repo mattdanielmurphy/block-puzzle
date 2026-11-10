@@ -4,24 +4,42 @@ import { WebHaptics } from "web-haptics"
 import { tweak } from "./tweaks"
 
 /**
- * Haptics: native Taptic Engine in the iPhone app (Capacitor Haptics → UIFeedbackGenerator,
- * which stays silent when the phone's System Haptics are off), web-haptics in the browser.
+ * Haptics, one set of named styles on every platform:
+ * - Super App shell: `window.superapp.haptics(style)` (real Taptic Engine) when present;
+ * - iPhone app: Capacitor Haptics (UIFeedbackGenerator, silent when System Haptics are off);
+ * - Mac app: trackpad haptics through the MacHaptics bridge (SceneDelegate.swift);
+ * - touch browsers: web-haptics.
  * The player can turn them off in Settings.
  */
-const native = Capacitor.isNativePlatform()
+type Style = "light" | "medium" | "heavy" | "soft" | "rigid" | "selection" | "success" | "warning" | "error"
 
-/** Mac trackpad haptics (native bridge in SceneDelegate.swift). pattern: 0 generic, 1 alignment, 2 level change. */
+const native = Capacitor.isNativePlatform()
+const isTouch = typeof window !== "undefined" && "ontouchstart" in window
+const superapp = (): { haptics: (s: Style) => void } | null => {
+	const s = (window as any).superapp
+	return s && typeof s.haptics === "function" ? s : null
+}
+
+/** Mac trackpad haptics. pattern: 0 generic, 1 alignment, 2 level change. */
 interface MacHapticsPlugin {
 	available(): Promise<{ value: boolean }>
 	perform(o: { pattern: number; count?: number; gapMs?: number }): Promise<void>
 }
 const MacHaptics = registerPlugin<MacHapticsPlugin>("MacHaptics")
-enum Pad {
-	Generic = 0,
-	Alignment = 1,
-	Level = 2,
+const MAC_PATTERN: Record<Style, number> = { light: 1, selection: 1, soft: 0, medium: 0, rigid: 2, heavy: 2, success: 2, warning: 2, error: 0 }
+
+/** web-haptics fallback: one pulse per style. */
+const WEB_PULSE: Record<Style, { duration: number; intensity: number }> = {
+	selection: { duration: 8, intensity: 0.25 },
+	light: { duration: 14, intensity: 0.4 },
+	soft: { duration: 22, intensity: 0.45 },
+	medium: { duration: 24, intensity: 0.65 },
+	rigid: { duration: 16, intensity: 0.9 },
+	heavy: { duration: 40, intensity: 1 },
+	success: { duration: 40, intensity: 0.8 },
+	warning: { duration: 40, intensity: 0.8 },
+	error: { duration: 60, intensity: 1 },
 }
-const isTouch = typeof window !== "undefined" && "ontouchstart" in window
 
 class HapticsManager {
 	private web: WebHaptics | null = null
@@ -62,13 +80,9 @@ class HapticsManager {
 		}
 	}
 
-	/** True where haptics can actually be felt (iPhone app, touch browsers). */
+	/** True where haptics can actually be felt (iPhone app, Mac trackpad, touch browsers, Super App). */
 	get available() {
-		return (native && (this.mac || isTouch)) || isTouch
-	}
-
-	private pad(pattern: Pad, count = 1, gapMs = 80) {
-		MacHaptics.perform({ pattern, count, gapMs }).catch(() => {})
+		return isTouch || this.mac || !!superapp()
 	}
 
 	get enabled() {
@@ -81,42 +95,67 @@ class HapticsManager {
 		} catch {}
 	}
 
-	private impact(style: ImpactStyle) {
-		Haptics.impact({ style }).catch(() => {})
+	/** Fire one haptic in a named style on whatever this platform has. */
+	private fire(style: Style) {
+		const sa = superapp()
+		if (sa) {
+			try {
+				sa.haptics(style)
+			} catch {}
+			return
+		}
+		if (this.mac) {
+			MacHaptics.perform({ pattern: MAC_PATTERN[style] }).catch(() => {})
+			return
+		}
+		if (native) {
+			const p =
+				style === "selection"
+					? Haptics.selectionChanged()
+					: style === "success" || style === "warning" || style === "error"
+						? Haptics.notification({ type: style === "success" ? NotificationType.Success : style === "warning" ? NotificationType.Warning : NotificationType.Error })
+						: Haptics.impact({ style: style === "light" || style === "soft" ? ImpactStyle.Light : style === "medium" ? ImpactStyle.Medium : ImpactStyle.Heavy })
+			p.catch(() => {})
+			return
+		}
+		this.web?.trigger([WEB_PULSE[style]]).catch(() => {})
 	}
-	private notify(type: NotificationType) {
-		Haptics.notification({ type }).catch(() => {})
+
+	/** Several haptics in a row (combos, game over). */
+	private seq(styles: Style[], gapMs: number) {
+		styles.forEach((s, i) => (i === 0 ? this.fire(s) : setTimeout(() => this.fire(s), gapMs * i)))
 	}
-	private webTrigger(p: any) {
-		this.web?.trigger(p).catch(() => {})
+
+	/** Drag feel on a ladder; the haptics.dragStrength knob shifts every drag haptic up or down a step. */
+	private dragStyle(base: number): Style {
+		const ladder: Style[] = ["selection", "light", "medium", "rigid", "heavy"]
+		const k = Math.round(tweak("haptics.dragStrength", 1))
+		return ladder[Math.max(0, Math.min(ladder.length - 1, base + k))]
 	}
 
 	/** Picked a piece up from the tray. */
 	pickUp() {
-		if (!this._enabled) return
-		if (this.mac) return this.pad(Pad.Alignment)
-		if (native) this.impact(ImpactStyle.Light)
-		else this.webTrigger([{ duration: 20, intensity: 0.4 }])
+		if (this._enabled) this.fire(this.dragStyle(1))
 	}
 
-	/** Ghost snapped onto a valid spot while dragging. */
+	/** Ghost appeared on a valid spot while dragging: it "locks in". */
 	snap() {
-		if (!this._enabled) return
-		if (this.mac) return this.pad(Pad.Alignment)
-		if (native) Haptics.selectionChanged().catch(() => {})
-		else this.webTrigger([{ duration: 12, intensity: 0.25 }])
+		if (this._enabled) this.fire(this.dragStyle(1))
+	}
+
+	/** Ghost disappeared (piece moved over a spot where it can't go): a soft give. */
+	unsnap() {
+		if (this._enabled) this.fire("soft")
 	}
 
 	private lastTick = 0
-	/** The dragged piece moved one cell on the board: the faintest possible tick. */
-	tick() {
+	/** The dragged piece moved one cell; crossing into another 3×3 box ticks harder. */
+	tick(crossedBox = false) {
 		if (!this._enabled) return
 		const now = performance.now()
-		if (now - this.lastTick < tweak("haptics.tickGapMs", 45)) return
+		if (!crossedBox && now - this.lastTick < tweak("haptics.tickGapMs", 45)) return
 		this.lastTick = now
-		if (this.mac) return this.pad(Pad.Alignment)
-		if (native) Haptics.impact({ style: ImpactStyle.Light }).catch(() => {})
-		else this.webTrigger([{ duration: 8, intensity: 0.2 }])
+		this.fire(this.dragStyle(crossedBox ? 2 : 1)) // medium per cell, rigid at a box line
 	}
 
 	private lastSlam = 0
@@ -127,73 +166,34 @@ class HapticsManager {
 		if (now - this.lastSlam < 180) return
 		this.lastSlam = now
 		const s = Math.min(1, strength * tweak("haptics.slam", 1))
-		if (this.mac) return this.pad(s > 0.6 ? Pad.Level : Pad.Generic)
-		if (native) this.impact(s > 0.7 ? ImpactStyle.Heavy : s > 0.35 ? ImpactStyle.Medium : ImpactStyle.Light)
-		else this.webTrigger([{ duration: Math.round(15 + 35 * s), intensity: 0.3 + 0.7 * s }])
+		if (s > 0.75) this.seq(["heavy", "rigid"], 45) // hard hit plus a little rebound
+		else this.fire(s > 0.4 ? "rigid" : "medium")
 	}
 
 	/** Placed a piece; linesCleared = rows + cols + boxes. */
 	place(linesCleared: number) {
 		if (!this._enabled) return
-		if (this.mac) {
-			if (linesCleared === 0) this.pad(Pad.Generic)
-			else this.pad(Pad.Level, Math.min(linesCleared + 1, 4), 90)
-			return
-		}
-		if (native) {
-			if (linesCleared === 0) this.impact(ImpactStyle.Medium)
-			else if (linesCleared === 1) this.notify(NotificationType.Success)
-			else {
-				// Combo: success, then a heavy thump per extra line (max 3).
-				this.notify(NotificationType.Success)
-				for (let i = 1; i < Math.min(linesCleared, 4); i++) setTimeout(() => this.impact(ImpactStyle.Heavy), 90 * i)
-			}
-			return
-		}
-		if (linesCleared === 0) this.webTrigger("nudge")
-		else if (linesCleared === 1) this.webTrigger("success")
-		else
-			this.webTrigger([
-				{ duration: 60, intensity: 1 },
-				{ delay: 60, duration: 60, intensity: 0.6 },
-				{ delay: 60, duration: 80, intensity: 1 },
-			])
+		if (linesCleared === 0) this.fire("medium")
+		else if (linesCleared === 1) this.fire("success")
+		else this.seq(["success", ...Array<Style>(Math.min(linesCleared - 1, 3)).fill("heavy")], 90)
 	}
 
 	/** Dropped a piece where it can't go. */
 	invalid() {
-		if (!this._enabled) return
-		if (this.mac) return this.pad(Pad.Generic, 2, 70)
-		if (native) this.notify(NotificationType.Error)
-		else this.webTrigger("error")
+		if (this._enabled) this.fire("error")
 	}
 
 	bombExplode() {
-		if (!this._enabled) return
-		if (this.mac) return this.pad(Pad.Level, 3, 60)
-		if (native) {
-			this.impact(ImpactStyle.Heavy)
-			setTimeout(() => this.impact(ImpactStyle.Medium), 110)
-		} else
-			this.webTrigger([
-				{ duration: 80, intensity: 1 },
-				{ delay: 40, duration: 120, intensity: 0.7 },
-			])
+		if (this._enabled) this.seq(["heavy", "medium", "light"], 90)
 	}
 
 	/** Hand timer entered its last 3 seconds. */
 	timerPanic() {
-		if (!this._enabled) return
-		if (this.mac) return this.pad(Pad.Alignment)
-		if (native) Haptics.notification({ type: NotificationType.Warning }).catch(() => {})
-		else this.webTrigger([{ duration: 30, intensity: 0.6 }])
+		if (this._enabled) this.fire("warning")
 	}
 
 	gameOver() {
-		if (!this._enabled) return
-		if (this.mac) return this.pad(Pad.Level, 3, 140)
-		if (native) this.notify(NotificationType.Error)
-		else this.webTrigger("error")
+		if (this._enabled) this.seq(["error", "heavy", "medium"], 140)
 	}
 }
 
