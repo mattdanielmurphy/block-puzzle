@@ -15,10 +15,13 @@ export class GameRenderer {
 	height: number = 0
 	layout!: Layout
 	animations: Effect[] = []
+	/** Current clear streak and glow strength, set by the app each frame. */
+	streak = 0
+	streakGlow = 1
 
 	constructor(canvas: HTMLCanvasElement, autoResize: boolean = true) {
 		this.canvas = canvas
-		const ctx = canvas.getContext("2d", { alpha: false })
+		const ctx = canvas.getContext("2d", { alpha: true })
 		if (!ctx) throw new Error("Could not get 2d context")
 		this.ctx = ctx
 
@@ -73,86 +76,53 @@ export class GameRenderer {
 		this.recalcLayout()
 	}
 
+	/** Tray pieces draw at this fraction of a board cell. 5 cells x 0.56 still fits a third of the board. */
+	static readonly TRAY_SCALE = 0.56
+
 	recalcLayout() {
-		const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || this.width < 600
-		const padding = this.height < 650 ? 5 : THEME.metrics.boardPadding
-		const availableW = this.width - padding * 2
+		// One layout for every screen: board + timer bar + tray as one block, the tray exactly as wide
+		// as the board, so pieces line up under the board's three columns of boxes.
+		const isTouch = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) && navigator.maxTouchPoints > 0
+		const gap = THEME.metrics.cellGap
+		const sidePad = Math.max(8, Math.min(16, this.width * 0.035))
+		const safeAreaBottom = parseInt(getComputedStyle(document.documentElement).getPropertyValue("--safe-area-bottom") || "0", 10) || 0
+		const topPad = 6
+		const timerSpace = 22 // timer bar (8px) plus breathing room
+		const trayPadY = 14
+		const bottomPad = Math.max(10, safeAreaBottom + 6)
 
-		if (isMobile) {
-			// MOBILE LAYOUT: Bottom-anchored (blocks + grid) with Header at TOP
-			// Gap will be between Header and Grid.
+		// Tray height scales with the board: the tallest piece (5 cells) at tray scale.
+		const trayFactor = (5 * GameRenderer.TRAY_SCALE) / GRID_SIZE // ≈ 0.31 of the board
+		const fixedH = topPad + timerSpace + trayPadY * 2 + bottomPad
+		const boardSize = Math.floor(Math.max(120, Math.min(this.width - sidePad * 2, (this.height - fixedH) / (1 + trayFactor))))
+		const cellSize = (boardSize - (GRID_SIZE - 1) * gap) / GRID_SIZE
+		const trayH = boardSize * trayFactor + trayPadY * 2
+		const groupH = boardSize + timerSpace + trayH
 
-			// Get safe area
-			const safeAreaBottom = parseInt(getComputedStyle(document.documentElement).getPropertyValue("--safe-area-bottom") || "0", 10) || 0
+		const boardX = Math.round((this.width - boardSize) / 2)
+		// Phones: sit low for thumb reach but keep some air under the tray (60% of spare room above).
+		// Mac/desktop: centre the whole block.
+		const spare = Math.max(0, this.height - bottomPad - topPad - groupH)
+		const boardY = Math.round(topPad + (isTouch ? spare * 0.6 : spare / 2))
+		const trayY = boardY + boardSize + timerSpace
 
-			// 1. Calculate tray height based on max piece height
-			// Use a slightly larger prelim board size for better grid scaling
-			const prelimBoardSize = Math.min(availableW, this.height * 0.7)
-			const prelimCellSize = (prelimBoardSize - (GRID_SIZE - 1) * THEME.metrics.cellGap) / GRID_SIZE
-			const trayCellSize = prelimCellSize * 0.6
-			const maxPieceHeight = trayCellSize * 5 + THEME.metrics.cellGap * 4
-			const trayBottomPadding = 10 + safeAreaBottom
-			const trayTopPadding = 10
-			const trayHeight = maxPieceHeight + trayBottomPadding + trayTopPadding
-
-			const trayY = this.height - trayHeight
-
-			// 2. Position Grid as large as possible above tray
-			const boardMaxH = trayY - padding * 2
-			const boardSize = Math.min(availableW, boardMaxH)
-			const cellSize = (boardSize - (GRID_SIZE - 1) * THEME.metrics.cellGap) / GRID_SIZE
-
-			const boardX = (this.width - boardSize) / 2
-			const boardY = trayY - boardSize - padding // Anchor board right above tray
-
-			this.layout = {
-				boardRect: { x: boardX, y: boardY, w: boardSize, h: boardSize, cellSize },
-				trayRect: {
-					x: 0,
-					y: trayY,
-					w: this.width,
-					h: trayHeight,
-					shapecenters: [],
-				},
-			}
-
-			const slotW = this.width / 3
-			const cy = this.height - trayBottomPadding - maxPieceHeight / 2
-			this.layout.trayRect.shapecenters = [
-				{ x: slotW * 0.5, y: cy },
-				{ x: slotW * 1.5, y: cy },
-				{ x: slotW * 2.5, y: cy },
-			]
-		} else {
-			// DESKTOP LAYOUT: Centered, top-down positioning (original behavior)
-			const trayHeight = this.height * THEME.metrics.trayHeightRatio
-			const boardMaxH = this.height - trayHeight - padding * 2
-			const boardSize = Math.min(availableW, boardMaxH)
-			const cellSize = (boardSize - (GRID_SIZE - 1) * THEME.metrics.cellGap) / GRID_SIZE
-
-			const boardX = (this.width - boardSize) / 2
-			const boardY = padding // Top padding
-
-			this.layout = {
-				boardRect: { x: boardX, y: boardY, w: boardSize, h: boardSize, cellSize },
-				trayRect: {
-					x: 0,
-					y: boardY + boardSize + padding,
-					w: this.width,
-					h: this.height - (boardY + boardSize + padding),
-					shapecenters: [], // calculated below
-				},
-			}
-
-			// Calculate 3 slots for shapes in tray - centered
-			const slotW = this.width / 3
-			const cy = this.layout.trayRect.y + this.layout.trayRect.h / 2
-			this.layout.trayRect.shapecenters = [
-				{ x: slotW * 0.5, y: cy },
-				{ x: slotW * 1.5, y: cy },
-				{ x: slotW * 2.5, y: cy },
-			]
+		this.layout = {
+			boardRect: { x: boardX, y: boardY, w: boardSize, h: boardSize, cellSize },
+			trayRect: { x: boardX, y: trayY, w: boardSize, h: trayH, shapecenters: [] },
 		}
+		const slotW = boardSize / 3
+		const cy = trayY + trayH / 2
+		this.layout.trayRect.shapecenters = [0, 1, 2].map((i) => ({ x: boardX + slotW * (i + 0.5), y: cy }))
+
+		// Let the DOM header line up with the board's edges.
+		const root = document.documentElement.style
+		root.setProperty("--board-w", `${boardSize}px`)
+	}
+
+	/** Which tray slot (0-2) sits under canvas x. */
+	traySlotAt(x: number): number {
+		const { x: tx, w } = this.layout.trayRect
+		return Math.max(0, Math.min(2, Math.floor(((x - tx) / w) * 3)))
 	}
 
 	draw(
@@ -168,9 +138,13 @@ export class GameRenderer {
 		handTimerPanic: boolean = false,
 		isDesktop: boolean = false
 	) {
+		if (!this.layout) {
+			this.resize()
+			if (!this.layout) return // canvas not laid out yet; the next frame will try again
+		}
 		// Clear
-		this.ctx.fillStyle = THEME.colors.background
-		this.ctx.fillRect(0, 0, this.width, this.height)
+		// Transparent: the page's background gradient shows through, so no visible canvas box.
+		this.ctx.clearRect(0, 0, this.width, this.height)
 
 		this.drawBoard(state.grid, ghostPos, dragShape)
 		// Draw Powerups if provided
@@ -225,37 +199,37 @@ export class GameRenderer {
 		// If cells are tiny (e.g. simulation), we want sharp corners, not circles.
 		const rad = Math.max(1, cellSize * 0.15)
 
-		// Draw Background Slots
+		// Streak glow behind the board (the surprise feature): stronger the longer the streak.
+		if (this.streak >= 2 && this.streakGlow > 0) {
+			const t = performance.now() / 1000
+			const level = Math.min(this.streak - 1, 6) / 6
+			const pulse = 0.75 + 0.25 * Math.sin(t * (2 + level * 3))
+			const ctx = this.ctx
+			ctx.save()
+			ctx.shadowColor = `rgba(126, 224, 244, ${(0.35 + 0.5 * level) * pulse * Math.min(1, this.streakGlow)})`
+			ctx.shadowBlur = (10 + 26 * level) * this.streakGlow
+			ctx.strokeStyle = `rgba(160, 235, 255, ${(0.25 + 0.5 * level) * pulse})`
+			ctx.lineWidth = 2
+			const w = GRID_SIZE * (cellSize + gap) - gap
+			this.roundRect(x - 5, y - 5, w + 10, w + 10, rad + 5)
+			ctx.stroke()
+			ctx.restore()
+		}
+
+		// Cells. Alternate 3x3 boxes get a slightly lighter empty colour, so the boxes read clearly
+		// without divider lines squeezing into the gaps.
 		for (let r = 0; r < GRID_SIZE; r++) {
 			for (let c = 0; c < GRID_SIZE; c++) {
 				const cx = x + c * (cellSize + gap)
 				const cy = y + r * (cellSize + gap)
-				// Draw Cell
 				const cellVal = grid[r * GRID_SIZE + c]
-				this.ctx.fillStyle = cellVal === 0 ? THEME.colors.emptyCell : THEME.colors.shapes[cellVal]
+				const altBox = (Math.floor(r / 3) + Math.floor(c / 3)) % 2 === 1
+				this.ctx.fillStyle = cellVal === 0 ? (altBox ? THEME.colors.emptyCellAlt : THEME.colors.emptyCell) : THEME.colors.shapes[cellVal]
 				this.roundRect(cx, cy, cellSize, cellSize, rad)
 				this.ctx.fill()
 			}
 		}
 
-		// Draw Subdivision Lines
-		this.ctx.strokeStyle = THEME.colors.subgridLine
-		// Dynamic linewidth: 8% of cell size
-		this.ctx.lineWidth = Math.max(0.5, cellSize * 0.08)
-		this.ctx.beginPath()
-		// Vertical lines (after col 2 and 5)
-		for (let c = 3; c < GRID_SIZE; c += 3) {
-			const cx = x + c * (cellSize + gap) - gap / 2
-			this.ctx.moveTo(cx, y)
-			this.ctx.lineTo(cx, y + GRID_SIZE * (cellSize + gap) - gap)
-		}
-		// Horizontal lines (after row 2 and 5)
-		for (let r = 3; r < GRID_SIZE; r += 3) {
-			const cy = y + r * (cellSize + gap) - gap / 2
-			this.ctx.moveTo(x, cy)
-			this.ctx.lineTo(x + GRID_SIZE * (cellSize + gap) - gap, cy)
-		}
-		this.ctx.stroke()
 		// Draw Ghost
 		if (ghostPos && dragShape) {
 			this.ctx.fillStyle = THEME.colors.ghost
@@ -323,7 +297,7 @@ export class GameRenderer {
 
 	drawTray(shapes: (Shape | null)[], draggingShape: Shape | null, draggingIndex: number, placeability: boolean[] | null, hoveredIndex: number | null = null) {
 		const { shapecenters } = this.layout.trayRect
-		const baseCellSize = this.layout.boardRect.cellSize * 0.6 // Smaller in tray
+		const baseCellSize = this.layout.boardRect.cellSize * GameRenderer.TRAY_SCALE
 
 		shapes.forEach((shape, i) => {
 			if (shape && shape !== draggingShape) {
@@ -337,7 +311,7 @@ export class GameRenderer {
 				const isHighlighted = i === hoveredIndex
 				if (isHighlighted) {
 					// Scale up on hover - more prominent for 'snapping' feel
-					cellSize *= 1.2
+					cellSize *= 1.1
 					// Stronger glow
 					this.ctx.shadowColor = isPlaceable ? "rgba(126, 224, 244, 0.6)" : "rgba(255, 255, 255, 0.3)"
 					this.ctx.shadowBlur = 30

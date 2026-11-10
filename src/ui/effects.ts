@@ -79,16 +79,17 @@ export class BlockClearEffect implements Effect {
 export class FloatingTextEffect implements Effect {
 	isFinished: boolean = false
 	life: number = 0
-	readonly DURATION = 1.0
+	readonly DURATION: number
 
 	x: number
 	y: number
 	text: string
 
-	constructor(x: number, y: number, text: string) {
+	constructor(x: number, y: number, text: string, duration: number = 1.0, public color: string = "#ffcc00", public fontPx: number = 18) {
 		this.x = x
 		this.y = y
 		this.text = text
+		this.DURATION = duration
 	}
 
 	update(dt: number) {
@@ -105,8 +106,8 @@ export class FloatingTextEffect implements Effect {
 		const lift = progress * 50 // Move up 50px
 
 		ctx.globalAlpha = alpha
-		ctx.fillStyle = "#ffcc00" // Gold color
-		ctx.font = "bold 18px sans-serif"
+		ctx.fillStyle = this.color
+		ctx.font = `bold ${this.fontPx}px -apple-system, BlinkMacSystemFont, sans-serif`
 		ctx.textAlign = "center"
 
 		ctx.lineWidth = 3

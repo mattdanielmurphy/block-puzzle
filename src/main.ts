@@ -11,6 +11,9 @@ import { THEME } from "./ui/theme"
 import { TutorialManager } from "./ui/tutorial"
 import { VERSION } from "./version"
 import { haptics } from "./haptics"
+import { sound } from "./audio"
+import { tweak } from "./tweaks"
+import { SHOTS, runDemo } from "./demo"
 import { inject } from "@vercel/analytics"
 
 // In dev mode, ensure any broken PWA service workers from previous runs are unregistered
@@ -116,6 +119,9 @@ const GAME_OVER_QUOTES = [
 	"Did you get the yogurt effect™?",
 ]
 
+const PAUSE_SVG = '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1.2"/><rect x="14" y="5" width="4" height="14" rx="1.2"/></svg>'
+const PLAY_SVG = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.2-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>'
+
 class GameApp {
 	engine: GameEngine
 	renderer: GameRenderer
@@ -135,6 +141,11 @@ class GameApp {
 
 	// Snap settings
 	private readonly SNAP_THRESHOLD = 3
+
+	// Clear streak (consecutive hands with clears; breaks after N placements without one)
+	private streak: number = 0
+	private movesSinceClear: number = 0
+	private runBestStreak: number = 0
 
 	// Status Face State
 	private lastPlaceability: boolean[] = []
@@ -348,7 +359,7 @@ class GameApp {
 				this.dragPos = null
 				this.ghostPos = null
 				const btn = document.getElementById("pause-btn")
-				if (btn) btn.textContent = "▶"
+				if (btn) btn.innerHTML = PLAY_SVG
 				this.saveGameState()
 			},
 			onClose: () => {
@@ -360,7 +371,7 @@ class GameApp {
 				this.isPaused = false
 				this.pauseStartedAt = null
 				const btn = document.getElementById("pause-btn")
-				if (btn) btn.textContent = "⏸"
+				if (btn) btn.innerHTML = PAUSE_SVG
 			},
 		})
 
@@ -706,6 +717,7 @@ class GameApp {
 		// pause on focus lost
 		window.addEventListener("blur", () => {
 			console.log("blur")
+			if (SHOTS) return
 			if (!this.tutorialManager.isActive) {
 				if (this.engine.isGameOver) {
 					this.saveGameState()
@@ -718,7 +730,7 @@ class GameApp {
 		// when document.visibilityState === "hidden", pause game
 		document.addEventListener("visibilitychange", () => {
 			console.log("visibilitychange")
-			if (document.visibilityState === "hidden" && !this.tutorialManager.isActive) {
+			if (document.visibilityState === "hidden" && !this.tutorialManager.isActive && !SHOTS) {
 				this.pauseGame()
 			}
 		})
@@ -758,6 +770,53 @@ class GameApp {
 		}
 
 		// Events
+		// Sound + haptics
+		const soundToggle = document.getElementById("sound-toggle") as HTMLInputElement | null
+		const volSlider = document.getElementById("volume-slider") as HTMLInputElement | null
+		const volValue = document.getElementById("volume-value")
+		const volRow = document.getElementById("volume-row")
+		const hapticsToggle = document.getElementById("haptics-toggle") as HTMLInputElement | null
+		const soundBtn = document.getElementById("sound-btn")
+		const syncSoundUI = () => {
+			if (soundToggle) soundToggle.checked = sound.enabled
+			if (volSlider) volSlider.value = String(sound.volume)
+			if (volValue) volValue.textContent = `${Math.round(sound.volume * 100)}%`
+			volRow?.classList.toggle("disabled", !sound.enabled)
+			if (volSlider) volSlider.disabled = !sound.enabled
+			soundBtn?.classList.toggle("muted", !sound.enabled)
+			soundBtn?.setAttribute("aria-pressed", String(!sound.enabled))
+		}
+		const toggleSound = () => {
+			sound.enabled = !sound.enabled
+			syncSoundUI()
+			if (sound.enabled) sound.preview()
+		}
+		syncSoundUI()
+		soundToggle?.addEventListener("change", () => {
+			sound.enabled = soundToggle.checked
+			syncSoundUI()
+			if (sound.enabled) sound.preview()
+		})
+		volSlider?.addEventListener("input", () => {
+			sound.volume = parseFloat(volSlider.value)
+			syncSoundUI()
+		})
+		volSlider?.addEventListener("change", () => sound.preview())
+		soundBtn?.addEventListener("click", toggleSound)
+		document.addEventListener("keydown", (e) => {
+			if (e.key.toLowerCase() !== "m" || e.metaKey || e.ctrlKey || e.altKey) return
+			if ((document.activeElement as HTMLElement | null)?.tagName === "INPUT" && (document.activeElement as HTMLInputElement).type === "text") return
+			toggleSound()
+		})
+		if (!haptics.available) document.getElementById("haptics-row")?.classList.add("hidden")
+		if (hapticsToggle) {
+			hapticsToggle.checked = haptics.enabled
+			hapticsToggle.addEventListener("change", () => {
+				haptics.enabled = hapticsToggle.checked
+				if (haptics.enabled) haptics.place(0)
+			})
+		}
+
 		settingsBtn?.addEventListener("click", () => {
 			this.settingsModal.show()
 		})
@@ -902,7 +961,8 @@ class GameApp {
 			runId: this.runId!, // Save the current runId (assert non-null)
 			scoreSubmitted: this.scoreSubmitted,
 			chillMode: this.chillMode,
-		}
+			streak: { s: this.streak, m: this.movesSinceClear, b: this.runBestStreak },
+		} as SavedAppState & { streak: { s: number; m: number; b: number } }
 
 		localStorage.setItem("bp_save_state", JSON.stringify(state))
 	}
@@ -939,6 +999,13 @@ class GameApp {
 
 			console.log(`[loadGameState] runId: ${this.runId}, scoreSubmitted: ${this.scoreSubmitted}`)
 
+			const st = (state as any).streak
+			if (st) {
+				this.streak = st.s || 0
+				this.movesSinceClear = st.m || 0
+				this.runBestStreak = st.b || 0
+				this.updateStreakBadge()
+			}
 			this.chillMode = state.chillMode ?? false
 			this.engine.chillMode = this.chillMode
 
@@ -1387,6 +1454,7 @@ class GameApp {
 		// If priorBestScore is 0, we trigger on the first score > 0
 		if (!this.highScoreNotificationShown && this.engine.score > this.priorBestScore && (this.priorBestScore > 0 || this.engine.score > 0)) {
 			this.showHighScoreNotification()
+			if (this.priorBestScore > 0 && !this.engine.isGameOver) sound.newBest()
 			this.highScoreNotificationShown = true
 		}
 
@@ -1750,7 +1818,7 @@ class GameApp {
 		this.engine.isGameOver = true
 		this.handDeadline = null
 		this.prevTimerPanic = false
-		haptics.gameOver()
+		this.playGameOverCue()
 		this.updateUI()
 		this.saveGameState()
 	}
@@ -1808,7 +1876,6 @@ class GameApp {
 
 		// Tray area detection - Magnetic Snapping
 		const { trayRect, boardRect } = this.renderer.layout
-		const slotW = trayRect.w / 3
 
 		// SNAP CONDITION: Only snap if in the tray area
 		const snapThresholdY = boardRect.y + boardRect.h
@@ -1825,8 +1892,7 @@ class GameApp {
 			// Hide native cursor as we are 'snapping' to pieces
 			this.canvas.style.cursor = "none"
 
-			let index = Math.floor(x / slotW)
-			index = Math.max(0, Math.min(2, index))
+			let index = this.renderer.traySlotAt(x)
 
 			// If the direct slot is empty, snap to the nearest available one by pixel distance
 			if (!shapes[index]) {
@@ -1858,6 +1924,7 @@ class GameApp {
 			}
 			this.dragShape = shape
 			haptics.pickUp()
+			sound.pickUp()
 			// Input manager handles calling move/end
 		} else {
 			this.input.dragState = null // Cancel if empty slot
@@ -2025,9 +2092,15 @@ class GameApp {
 					})
 				}
 
-				// Haptic feedback — scale by how many lines/cols/boxes were cleared
-				const totalCleared = result.clearedRows.length + result.clearedCols.length + result.clearedBoxes.length
+				// Haptic + sound feedback, scaled by how many lines/cols/boxes were cleared
+				const lineClears = result.clearedRows.length + result.clearedCols.length + result.clearedBoxes.length
+				const anyCleared = lineClears > 0 || (result.clearedCells?.length ?? 0) > 0
+				const totalCleared = lineClears > 0 ? lineClears : anyCleared ? 1 : 0
+				this.updateStreak(anyCleared)
 				haptics.place(totalCleared)
+				sound.place()
+				if (anyCleared) sound.clear(totalCleared, this.streak)
+				if (result.gameOver && !this.tutorialManager.isActive) this.playGameOverCue()
 
 				if (result.moveMultiplier && result.moveMultiplier > 1) {
 					const { boardRect } = this.renderer.layout
@@ -2045,6 +2118,10 @@ class GameApp {
 				this.updateUI()
 				this.saveGameState()
 			}
+		} else if (this.dragPos && this.dragPos.y < this.renderer.layout.trayRect.y) {
+			// Dropped over the board where it doesn't fit (dropping back on the tray is just a cancel)
+			haptics.invalid()
+			sound.invalid()
 		}
 
 		// Reset drag state
@@ -2092,6 +2169,8 @@ class GameApp {
 		const ghostPos = this.ghostPos
 
 		const handRatio = this.handTimerRatio
+		this.renderer.streak = this.streak
+		this.renderer.streakGlow = tweak("streak.glow", 1)
 		this.renderer.draw(activeEngine, activeEngine, dragShape, dragPos, ghostPos, placeability, this.hoveredShapeIndex, now, handRatio, this.timerPanic, !this.isMobile)
 
 		requestAnimationFrame(this.loop.bind(this))
@@ -2173,6 +2252,67 @@ class GameApp {
 		}, 3000)
 	}
 
+	/** Game-over sound + haptic, then the new-best fanfare if this run beat the old best. */
+	private playGameOverCue() {
+		haptics.gameOver()
+		sound.gameOver()
+		if (this.priorBestScore > 0 && this.engine.score > this.priorBestScore) setTimeout(() => sound.newBest(), 900)
+		this.showStreakSummary()
+	}
+
+	/** Surprise feature: clear streaks. Each clearing placement raises the streak (and the chime's pitch). */
+	private updateStreak(cleared: boolean) {
+		if (this.tutorialManager.isActive) return
+		if (cleared) {
+			this.streak++
+			this.movesSinceClear = 0
+			this.runBestStreak = Math.max(this.runBestStreak, this.streak)
+			if (this.streak >= 2) {
+				const { boardRect } = this.renderer.layout
+				this.renderer.addEffect(new FloatingTextEffect(boardRect.x + boardRect.w / 2, boardRect.y + boardRect.h * 0.42, `Streak ×${this.streak}`, tweak("streak.labelSeconds", 1.1), "#a8f0ff", Math.round(Math.max(18, boardRect.cellSize * 0.55))))
+			}
+			const bestEver = parseInt(localStorage.getItem("bp_best_streak") || "0", 10)
+			if (this.streak > bestEver) localStorage.setItem("bp_best_streak", String(this.streak))
+		} else {
+			this.movesSinceClear++
+			if (this.movesSinceClear >= tweak("streak.graceMoves", 3)) this.streak = 0
+		}
+		this.updateStreakBadge()
+	}
+
+	private resetStreak() {
+		this.streak = 0
+		this.movesSinceClear = 0
+		this.runBestStreak = 0
+		this.updateStreakBadge()
+	}
+
+	private updateStreakBadge() {
+		const el = document.getElementById("streak-badge")
+		if (!el) return
+		const grace = tweak("streak.graceMoves", 3)
+		if (this.streak >= 2) {
+			el.classList.remove("hidden")
+			el.textContent = `STREAK ${this.streak}`
+			el.title = `Clear streak: ${this.streak}. Clear again within ${grace - this.movesSinceClear} placement(s) to keep it.`
+			el.dataset.level = String(Math.min(this.streak, 6))
+		} else {
+			el.classList.add("hidden")
+		}
+	}
+
+	private showStreakSummary() {
+		const el = document.getElementById("game-over-streak")
+		if (!el) return
+		const bestEver = parseInt(localStorage.getItem("bp_best_streak") || "0", 10)
+		if (this.runBestStreak >= 2) {
+			el.textContent = this.runBestStreak >= bestEver ? `Longest streak: ${this.runBestStreak} (your best!)` : `Longest streak: ${this.runBestStreak} · best ever ${bestEver}`
+			el.classList.remove("hidden")
+		} else {
+			el.classList.add("hidden")
+		}
+	}
+
 	async startNewRun() {
 		// Clear previous run's submission status from localStorage
 		if (this.runId) {
@@ -2194,6 +2334,7 @@ class GameApp {
 
 		// The runInitialized state will now be handled by the first block placement
 		this.firstBlockPlaced = false
+		this.resetStreak()
 		this.updateCountdownUI(null)
 		this.syncHandCountdown(Date.now())
 		this.updateUI() // Explicitly update UI after starting new run
@@ -2207,6 +2348,15 @@ window.onload = () => {
 		const canvas = document.getElementById("game-canvas") as HTMLCanvasElement
 		new Simulator(canvas)
 	} else {
-		new GameApp()
+		const app = new GameApp()
+		if (SHOTS) {
+			document.body.classList.remove("dev-mode")
+			document.getElementById("dev-indicator")?.classList.add("hidden")
+			document.getElementById("dev-controls-help")?.classList.add("hidden")
+			THEME.colors.background = "#050815"
+			localStorage.setItem("bp_tutorial_completed", "true")
+			;(window as any).__app = app
+			runDemo(app)
+		}
 	}
 }

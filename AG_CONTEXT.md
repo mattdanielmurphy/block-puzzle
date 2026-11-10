@@ -50,3 +50,10 @@
   - `K`: End current game (Kill).
   - **Visual Dev Indicators**: In dev mode, the background is dark red, a "DEV" text appears in the margin, and a help box list dev commands.
   - **IP Spoofing**: Dev mode fetches the actual public IP to test identification of remote devices.
+## Sound, haptics, streaks, Mac window (2026-11-10)
+- **Sound** (`src/audio.ts`): synthesized Web Audio (no sample files). Settings: sound on/off, volume (also `M` key and the header speaker button). Feel knobs live in `tweaks.json` (shared Tweaks format; shows in the ⌃⌥⌘T panel).
+- **Haptics** (`src/haptics.ts`): `@capacitor/haptics` in the iPhone app (follows the phone's System Haptics), web-haptics in touch browsers; Settings toggle. Mac "Designed for iPad" apps can't use trackpad haptics, so none there.
+- **Clear streaks**: back-to-back clears (within `streak.graceMoves` placements) climb a pentatonic scale, glow the board, show a STREAK badge under the face; longest streak at game over (`bp_best_streak`).
+- **Mac window**: `SceneDelegate.swift` `MacWindow` starts a 470×820 portrait window, centred, then remembers the player's size (`macWindowSize`). `UIRequiresFullScreen` is NO.
+- **Screenshot tour**: `VITE_SHOTS=1` build (or `?shots=1` in dev) plays a scripted tour (playing, line clear, pause, settings, game over) and restores localStorage after.
+- **Mac test build**: `ios/macdev.sh [shots]` builds `ios/tmp/BlockdokuDev.app` (bundle `ca.mattmurphy.blockdoku.dev`, so the real save is untouched); launch it in the background with `open -g` on that path.

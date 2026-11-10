@@ -50,7 +50,6 @@ export class InputManager {
 		const y = e.clientY - top
 
 		const { trayRect } = this.renderer.layout
-		const slotW = trayRect.w / 3
 
 		// Magnet snapping is a mouse-hover feature only. On touch, a stale hover index from a
 		// previous finger position would hijack the drag (grab left block -> right block moves).
@@ -59,7 +58,7 @@ export class InputManager {
 
 		const trayBuffer = 20
 		if (index === null && y >= trayRect.y - trayBuffer) {
-			index = Math.max(0, Math.min(2, Math.floor(x / slotW)))
+			index = this.renderer.traySlotAt(x)
 		}
 
 		if (index !== null && index >= 0 && index < 3) {

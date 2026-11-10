@@ -7,3 +7,4 @@ dist
 .env*
 PENDING_CHANGES.md
 ios/tmp
+tmp/

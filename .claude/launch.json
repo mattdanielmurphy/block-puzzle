@@ -1,0 +1,6 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "blockdoku", "runtimeExecutable": "bun", "runtimeArgs": ["x", "--bun", "vite", "--port", "3123"], "port": 3123 }
+  ]
+}

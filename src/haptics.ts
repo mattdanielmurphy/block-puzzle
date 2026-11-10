@@ -1,148 +1,136 @@
+import { Capacitor } from "@capacitor/core"
+import { Haptics, ImpactStyle, NotificationType } from "@capacitor/haptics"
 import { WebHaptics } from "web-haptics"
 
 /**
- * HapticsManager — thin singleton wrapper around WebHaptics.
- *
- * On Android/desktop: uses navigator.vibrate (WebHaptics.isSupported = true).
- * On iOS: navigator.vibrate is unsupported, but WebHaptics internally clicks a
- * hidden <input type="checkbox" switch> DOM element, which triggers the iOS
- * haptic engine. This path runs automatically when isSupported is false —
- * just don't gate on isSupported, let the library decide.
- *
- * debug: false on touch devices (matches the web-haptics site behaviour).
- * debug: true on desktop only for audio feedback during development.
+ * Haptics: native Taptic Engine in the iPhone app (Capacitor Haptics → UIFeedbackGenerator,
+ * which stays silent when the phone's System Haptics are off), web-haptics in the browser.
+ * The player can turn them off in Settings.
  */
-const isTouch = "ontouchstart" in window
+const native = Capacitor.isNativePlatform()
+const isTouch = typeof window !== "undefined" && "ontouchstart" in window
 
 class HapticsManager {
-	private haptics: WebHaptics
-	private _enabled: boolean = true
+	private web: WebHaptics | null = null
+	private _enabled = true
 
 	constructor() {
-		const debug = !isTouch
-		console.log(`[haptics] init — isTouch=${isTouch}, debug=${debug}, isSupported=${WebHaptics.isSupported}`)
-		this.haptics = new WebHaptics({ debug })
-
-		// Monkey-patch to fix iOS haptics: WebHaptics 0.0.6 uses display:none which kills iOS haptics.
-		// We override ensureDOM to use a "visually hidden" style instead.
-		if (!WebHaptics.isSupported) {
-			const h = this.haptics as any
-			if (h.ensureDOM) {
-				const originalEnsureDOM = h.ensureDOM.bind(h)
-				h.ensureDOM = () => {
-					originalEnsureDOM()
-					if (h.hapticLabel && h.hapticLabel.style.display === "none") {
-						const checkbox = h.hapticLabel.querySelector("input")
-						// Use "visually hidden" styles so it stays in the DOM and functional for iOS haptics
-						const hiddenStyle =
-							"position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;opacity:0;pointer-events:none;"
-						h.hapticLabel.style.cssText = hiddenStyle
-						if (checkbox) {
-							checkbox.style.cssText = hiddenStyle + "appearance:auto;-webkit-appearance:auto;"
+		try {
+			this._enabled = localStorage.getItem("bp_haptics_enabled") !== "false"
+		} catch {}
+		if (!native && isTouch) {
+			this.web = new WebHaptics({ debug: false })
+			// web-haptics 0.0.6 hides its iOS switch with display:none, which kills iOS haptics.
+			if (!WebHaptics.isSupported) {
+				const h = this.web as any
+				if (h.ensureDOM) {
+					const orig = h.ensureDOM.bind(h)
+					h.ensureDOM = () => {
+						orig()
+						if (h.hapticLabel && h.hapticLabel.style.display === "none") {
+							const hidden = "position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;opacity:0;pointer-events:none;"
+							h.hapticLabel.style.cssText = hidden
+							const cb = h.hapticLabel.querySelector("input")
+							if (cb) cb.style.cssText = hidden + "appearance:auto;-webkit-appearance:auto;"
 						}
 					}
 				}
 			}
 		}
+	}
 
-		// --- DEBUG: add a visible test button so we can verify web-haptics works ---
-		if (import.meta.env.DEV && typeof document !== "undefined") {
-			const btn = document.createElement("button")
-			btn.textContent = "🫨 Test Haptic"
-			btn.style.cssText =
-				"position:fixed;top:10px;right:10px;z-index:99999;padding:12px 18px;" +
-				"background:#222;color:#fff;border:2px solid #5fc9df;border-radius:8px;" +
-				"font-size:16px;cursor:pointer;-webkit-tap-highlight-color:rgba(0,0,0,0);"
-			btn.addEventListener("click", () => {
-				console.log("[haptics] TEST button tapped")
-				this.haptics
-					.trigger("success")
-					.then(() => {
-						console.log("[haptics] TEST trigger resolved")
-					})
-					.catch((e) => {
-						console.error("[haptics] TEST trigger error:", e)
-					})
-			})
-			// Wait for body to exist
-			const attach = () => {
-				if (document.body) {
-					document.body.appendChild(btn)
-					console.log("[haptics] TEST button added to DOM")
-				} else {
-					requestAnimationFrame(attach)
-				}
-			}
-			attach()
-		}
+	/** True where haptics can actually be felt (iPhone app, touch browsers). */
+	get available() {
+		return native || isTouch
 	}
 
 	get enabled() {
 		return this._enabled
 	}
-
-	set enabled(val: boolean) {
-		this._enabled = val
+	set enabled(v: boolean) {
+		this._enabled = v
+		try {
+			localStorage.setItem("bp_haptics_enabled", String(v))
+		} catch {}
 	}
 
-	/** Pick up a piece from the tray — very light tap */
+	private impact(style: ImpactStyle) {
+		Haptics.impact({ style }).catch(() => {})
+	}
+	private notify(type: NotificationType) {
+		Haptics.notification({ type }).catch(() => {})
+	}
+	private webTrigger(p: any) {
+		this.web?.trigger(p).catch(() => {})
+	}
+
+	/** Picked a piece up from the tray. */
 	pickUp() {
-		if (!this.enabled) return
-		console.log("[haptics] pickUp")
-		this.haptics.trigger([{ duration: 20, intensity: 0.4 }]).catch((e) => console.error("[haptics] trigger error:", e))
+		if (!this._enabled) return
+		if (native) this.impact(ImpactStyle.Light)
+		else this.webTrigger([{ duration: 20, intensity: 0.4 }])
 	}
 
-	/** Ghost snapped to a valid position while dragging */
+	/** Ghost snapped onto a valid spot while dragging. */
 	snap() {
-		if (!this.enabled) return
-		console.log("[haptics] snap")
-		this.haptics.trigger([{ duration: 15, intensity: 0.3 }]).catch((e) => console.error("[haptics] trigger error:", e))
+		if (!this._enabled) return
+		if (native) Haptics.selectionChanged().catch(() => {})
+		else this.webTrigger([{ duration: 12, intensity: 0.25 }])
 	}
 
-	/**
-	 * Placed a piece successfully.
-	 * @param linesCleared total number of rows + cols + boxes cleared
-	 */
+	/** Placed a piece; linesCleared = rows + cols + boxes. */
 	place(linesCleared: number) {
-		if (!this.enabled) return
-		console.log(`[haptics] place — linesCleared=${linesCleared}`)
-		if (linesCleared === 0) {
-			this.haptics.trigger("nudge").catch((e) => console.error("[haptics] trigger error:", e))
-		} else if (linesCleared === 1) {
-			this.haptics.trigger("success").catch((e) => console.error("[haptics] trigger error:", e))
-		} else {
-			this.haptics
-				.trigger([
-					{ duration: 60, intensity: 1 },
-					{ delay: 60, duration: 60, intensity: 0.6 },
-					{ delay: 60, duration: 80, intensity: 1 },
-				])
-				.catch((e) => console.error("[haptics] trigger error:", e))
+		if (!this._enabled) return
+		if (native) {
+			if (linesCleared === 0) this.impact(ImpactStyle.Medium)
+			else if (linesCleared === 1) this.notify(NotificationType.Success)
+			else {
+				// Combo: success, then a heavy thump per extra line (max 3).
+				this.notify(NotificationType.Success)
+				for (let i = 1; i < Math.min(linesCleared, 4); i++) setTimeout(() => this.impact(ImpactStyle.Heavy), 90 * i)
+			}
+			return
 		}
+		if (linesCleared === 0) this.webTrigger("nudge")
+		else if (linesCleared === 1) this.webTrigger("success")
+		else
+			this.webTrigger([
+				{ duration: 60, intensity: 1 },
+				{ delay: 60, duration: 60, intensity: 0.6 },
+				{ delay: 60, duration: 80, intensity: 1 },
+			])
 	}
 
-	/** Bomb exploded */
+	/** Dropped a piece where it can't go. */
+	invalid() {
+		if (!this._enabled) return
+		if (native) this.notify(NotificationType.Error)
+		else this.webTrigger("error")
+	}
+
 	bombExplode() {
-		if (!this.enabled) return
-		this.haptics
-			.trigger([
+		if (!this._enabled) return
+		if (native) {
+			this.impact(ImpactStyle.Heavy)
+			setTimeout(() => this.impact(ImpactStyle.Medium), 110)
+		} else
+			this.webTrigger([
 				{ duration: 80, intensity: 1 },
 				{ delay: 40, duration: 120, intensity: 0.7 },
-				{ delay: 60, duration: 40, intensity: 0.4 },
 			])
-			.catch((e) => console.error("[haptics] trigger error:", e))
 	}
 
-	/** Timer entered panic zone (≤ 3 s remaining) */
+	/** Hand timer entered its last 3 seconds. */
 	timerPanic() {
-		if (!this.enabled) return
-		this.haptics.trigger([{ duration: 30, intensity: 0.6 }]).catch((e) => console.error("[haptics] trigger error:", e))
+		if (!this._enabled) return
+		if (native) Haptics.notification({ type: NotificationType.Warning }).catch(() => {})
+		else this.webTrigger([{ duration: 30, intensity: 0.6 }])
 	}
 
-	/** Game over */
 	gameOver() {
-		if (!this.enabled) return
-		this.haptics.trigger("error").catch((e) => console.error("[haptics] trigger error:", e))
+		if (!this._enabled) return
+		if (native) this.notify(NotificationType.Error)
+		else this.webTrigger("error")
 	}
 }
 

@@ -2,7 +2,8 @@ export const THEME = {
     colors: {
         background: '#050815',
         boardBackground: '#0c0f26',
-        emptyCell: '#141a33',
+        emptyCell: '#121730',
+        emptyCellAlt: '#1b2245',
         gridLines: '#0a0d1a',
         subgridLine: '#1f2b4a',
         ghost: 'rgba(130, 200, 255, 0.25)',
