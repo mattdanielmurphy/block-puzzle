@@ -24,7 +24,10 @@ cat > ../tmp/export.plist <<P
 <?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>method</key><string>app-store-connect</string><key>destination</key><string>upload</string><key>teamID</key><string>$TEAM</string><key>signingStyle</key><string>automatic</string></dict></plist>
 P
 if xcodebuild -exportArchive -archivePath ../tmp/B.xcarchive -exportOptionsPlist ../tmp/export.plist -exportPath ../tmp/exp -allowProvisioningUpdates > ../tmp/export.out 2>&1; then
-  cat ../tmp/export.out; echo uploaded; exit 0
+  cat ../tmp/export.out; echo uploaded
+  # Same build into App Shack, over the air: App Shack runs the real app, not the website (Matt, 2026-11-10).
+  if [ -f ../../../super-app/tools/publish-bundle.sh ]; then sh ../../../super-app/tools/publish-bundle.sh blockdoku --deploy || echo "App Shack bundle publish FAILED"; fi
+  exit 0
 fi
 cat ../tmp/export.out
 if grep -q "Error Downloading App Information" ../tmp/export.out; then
