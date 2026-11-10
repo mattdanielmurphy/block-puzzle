@@ -2,6 +2,7 @@ import { GameState, Shape } from "../engine/types"
 
 import { GameRenderer } from "./renderer"
 import { THEME } from "./theme"
+import type { LockedPointer } from "./lockedPointer"
 
 export interface DragState {
 	shapeIndex: number
@@ -30,6 +31,8 @@ export class InputManager {
 
 	public sensitivity: number = 1.0
 	public isMobile: boolean = false
+	/** Locked-pointer play (mouse/trackpad). While locked it owns all input. */
+	public lock: LockedPointer | null = null
 
 	constructor(canvas: HTMLCanvasElement, renderer: GameRenderer, events: InputEvents) {
 		this.canvas = canvas
@@ -55,6 +58,12 @@ export class InputManager {
 		// previous finger position would hijack the drag (grab left block -> right block moves).
 		const isMouse = e.pointerType === "mouse"
 		let index = isMouse && this.events.getSnappedIndex ? this.events.getSnappedIndex() : null
+
+		if (isMouse && this.lock && !this.isMobile && e.button === 0) {
+			if (this.lock.locked) return
+			// Ask for locked-pointer play; this press still works normally until the lock lands.
+			if (y >= this.renderer.layout.boardRect.y) this.lock.engage(x)
+		}
 
 		const trayBuffer = 20
 		if (index === null && y >= trayRect.y - trayBuffer) {
@@ -86,6 +95,7 @@ export class InputManager {
 		const x = e.clientX - left
 		const y = e.clientY - top
 
+		if (this.lock?.locked) return
 		if (this.events.onPointerMove && e.pointerType === "mouse") {
 			this.events.onPointerMove(x, y)
 		}
@@ -104,6 +114,11 @@ export class InputManager {
 		const visualY = this.dragState.startY + this.dragState.touchOffsetY + deltaY
 
 		this.events.onDragMove(visualX, visualY)
+	}
+
+	/** Locked-pointer play took this drag over: forget it without dropping. */
+	cancelDrag() {
+		this.dragState = null
 	}
 
 	private onPointerUp(e: PointerEvent) {

@@ -1,5 +1,6 @@
 import UIKit
 import Capacitor
+import GameController
 
 class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
@@ -24,6 +25,12 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         if ProcessInfo.processInfo.isiOSAppOnMac {
             MacWindow.remember(windowScene)
         }
+    }
+
+    /// Never leave the Mac pointer frozen or hidden when the app goes to the background.
+    func sceneWillResignActive(_ scene: UIScene) {
+        MacMouse.setLocked(false) { _ in }
+        MacMouse.plugin?.emit("lockLost", [:])
     }
 
     func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
@@ -101,8 +108,17 @@ enum MacWindow {
 
 /// The web view's root controller, with the Mac trackpad haptics bridge registered.
 class GameViewController: CAPBridgeViewController {
+    static weak var current: GameViewController?
+    var wantsPointerLock = false {
+        didSet { if wantsPointerLock != oldValue { setNeedsUpdateOfPrefersPointerLocked() } }
+    }
+    override var prefersPointerLocked: Bool { wantsPointerLock }
+
     override open func capacitorDidLoad() {
-        bridge?.registerPluginInstance(MacHapticsPlugin())
+        GameViewController.current = self
+        let plugin = MacHapticsPlugin()
+        bridge?.registerPluginInstance(plugin)
+        MacMouse.plugin = plugin
     }
 }
 
@@ -117,7 +133,20 @@ public class MacHapticsPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "available", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "perform", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "cursor", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "pointerLock", returnType: CAPPluginReturnPromise),
     ]
+
+    /// locked: true locks the Mac pointer and streams raw mouse motion/buttons to the page as
+    /// "lockMove" {dx, dy} and "lockButton" {down} events. Resolves {locked, how}.
+    @objc func pointerLock(_ call: CAPPluginCall) {
+        let want = call.getBool("locked") ?? false
+        NSLog("[MacMouse] pointerLock(\(want)) requested, mice: \(GCMouse.mice().count)")
+        DispatchQueue.main.async {
+            MacMouse.setLocked(want) { how in call.resolve(["locked": how != "none", "how": how]) }
+        }
+    }
+
+    func emit(_ event: String, _ data: [String: Any]) { notifyListeners(event, data: data) }
 
     /// hidden: true hides the Mac pointer (the web view ignores CSS `cursor: none`), so the
     /// tray's magnetic hover can stand in for it, as in the browser.
@@ -140,6 +169,136 @@ public class MacHapticsPlugin: CAPPlugin, CAPBridgedPlugin {
             DispatchQueue.main.asyncAfter(deadline: .now() + gap * Double(i)) { MacTrackpad.perform(pattern) }
         }
         call.resolve()
+    }
+}
+
+/// Locked-pointer play on the Mac: UIKit pointer lock when the system grants it, else the pointer is
+/// frozen in place (CoreGraphics, reached at runtime) and hidden. Motion comes from GCMouse either way.
+enum MacMouse {
+    static weak var plugin: MacHapticsPlugin?
+    private static var locked = false
+    private static var frozen = false
+    private static var dx: Double = 0, dy: Double = 0
+    private static var flushPending = false
+    private static var observer: NSObjectProtocol?
+
+    private typealias AssociateFn = @convention(c) (Int32) -> Int32
+    private static let associate: AssociateFn? = {
+        guard ProcessInfo.processInfo.isiOSAppOnMac,
+              let h = dlopen(nil, RTLD_NOW), let f = dlsym(h, "CGAssociateMouseAndMouseCursorPosition") else { return nil }
+        return unsafeBitCast(f, to: AssociateFn.self)
+    }()
+
+    static func setLocked(_ want: Bool, done: @escaping (String) -> Void) {
+        guard ProcessInfo.processInfo.isiOSAppOnMac, let vc = GameViewController.current else { done("none"); return }
+        if !want {
+            if locked { NSLog("[MacMouse] unlocked") }
+            locked = false
+            vc.wantsPointerLock = false
+            if frozen { _ = associate?(1); frozen = false }
+            MacPointer.set(hidden: false)
+            done("none")
+            return
+        }
+        locked = true
+        loggedMove = false
+        attachMice()
+        vc.wantsPointerLock = true
+        // Give UIKit a moment to grant the lock; fall back to freezing the pointer if it doesn't.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            guard locked else { done("none"); return }
+            if vc.view.window?.windowScene?.pointerLockState?.isLocked == true {
+                NSLog("[MacMouse] locked (UIKit)")
+                done("uikit")
+            } else if let f = associate {
+                _ = f(0); frozen = true
+                MacPointer.set(hidden: true)
+                NSLog("[MacMouse] locked (frozen pointer)")
+                done("frozen")
+            } else {
+                NSLog("[MacMouse] lock unavailable")
+                locked = false
+                done("none")
+            }
+        }
+    }
+
+    /// AppKit mouse events, reached at runtime: NSEvent's local monitor sees every mouse event
+    /// in this process, with raw deltas even while the pointer is locked. GCMouse is the backup
+    /// (it reports no mice in "Designed for iPad" apps on some Macs).
+    private static var monitor: AnyObject?
+    private typealias AddMonitorFn = @convention(c) (AnyObject, Selector, UInt64, @convention(block) (AnyObject) -> AnyObject?) -> AnyObject?
+
+    private static func attachAppKitMonitor() -> Bool {
+        if monitor != nil { return true }
+        guard let cls = NSClassFromString("NSEvent") else { return false }
+        let sel = NSSelectorFromString("addLocalMonitorForEventsMatchingMask:handler:")
+        guard let m = class_getClassMethod(cls, sel) else { return false }
+        let fn = unsafeBitCast(method_getImplementation(m), to: AddMonitorFn.self)
+        // leftMouseDown 1, leftMouseUp 2, mouseMoved 5, leftMouseDragged 6, keyDown 10
+        let mask: UInt64 = (1 << 1) | (1 << 2) | (1 << 5) | (1 << 6) | (1 << 10)
+        let handler: @convention(block) (AnyObject) -> AnyObject? = { ev in
+            guard locked, let e = ev as? NSObject else { return ev }
+            let type = (e.value(forKey: "type") as? NSNumber)?.intValue ?? 0
+            switch type {
+            case 10:
+                // Esc always frees the pointer (the page may never see Esc while it's locked).
+                if (e.value(forKey: "keyCode") as? NSNumber)?.intValue == 53 {
+                    NSLog("[MacMouse] Esc")
+                    setLocked(false) { _ in }
+                    plugin?.emit("lockLost", [:])
+                }
+            case 1: plugin?.emit("lockButton", ["down": true])
+            case 2: plugin?.emit("lockButton", ["down": false])
+            default:
+                let x = (e.value(forKey: "deltaX") as? NSNumber)?.doubleValue ?? 0
+                let y = (e.value(forKey: "deltaY") as? NSNumber)?.doubleValue ?? 0
+                queueMove(x, y)
+            }
+            return ev
+        }
+        monitor = fn(cls, sel, mask, handler)
+        NSLog("[MacMouse] AppKit monitor \(monitor != nil ? "on" : "failed")")
+        return monitor != nil
+    }
+
+    private static var loggedMove = false
+    private static func queueMove(_ x: Double, _ y: Double) {
+        if !loggedMove { loggedMove = true; NSLog("[MacMouse] first move \(x), \(y)") }
+        dx += x; dy += y
+        if flushPending { return }
+        flushPending = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.008) {
+            flushPending = false
+            if dx != 0 || dy != 0 { plugin?.emit("lockMove", ["dx": dx, "dy": dy]) }
+            dx = 0; dy = 0
+        }
+    }
+
+    private static func attachMice() {
+        if attachAppKitMonitor() { return }
+        GCMouse.mice().forEach(attach)
+        if observer == nil {
+            observer = NotificationCenter.default.addObserver(forName: .GCMouseDidConnect, object: nil, queue: .main) { n in
+                if let m = n.object as? GCMouse { attach(m) }
+            }
+        }
+    }
+
+    private static func attach(_ m: GCMouse) {
+        guard let input = m.mouseInput else { return }
+        input.mouseMovedHandler = { _, x, y in
+            DispatchQueue.main.async {
+                guard locked, monitor == nil else { return }
+                queueMove(Double(x), -Double(y)) // GameController's y points up
+            }
+        }
+        input.leftButton.pressedChangedHandler = { _, _, pressed in
+            DispatchQueue.main.async {
+                guard monitor == nil else { return }
+                plugin?.emit("lockButton", ["down": pressed])
+            }
+        }
     }
 }
 

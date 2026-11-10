@@ -27,6 +27,8 @@ interface MacHapticsPlugin {
 	cursor(o: { hidden: boolean }): Promise<void>
 }
 const MacHaptics = registerPlugin<MacHapticsPlugin>("MacHaptics")
+/** The same native plugin, for other Mac-only features (pointer lock). */
+export const MacBridge: unknown = MacHaptics
 
 /**
  * The Mac app's web view ignores CSS `cursor: none`, which the tray's magnetic hover relies on

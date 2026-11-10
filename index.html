@@ -54,6 +54,7 @@
 
 			<main id="game-container">
 				<canvas id="game-canvas"></canvas>
+				<div id="lock-prompt" aria-live="polite"><strong>Click the board to start</strong><span>or press Space · Esc frees your pointer</span></div>
 				<div id="hand-timer-bottom" class="hand-timer-bar">
 					<div class="hand-timer-fill"></div>
 				</div>
@@ -100,6 +101,7 @@
 				<div id="pause-overlay" class="hidden overlay">
 					<h1>Paused</h1>
 					<p id="pause-instruction">Tap anywhere to resume</p>
+					<p id="pause-lock-hint" class="pause-hint hidden">Click the board or press Space to lock your pointer. Slide or press Z / X / C to choose a piece; click, tap or hold Space to pick it up and put it down; Esc frees&nbsp;it.</p>
 				</div>
 				<div id="settings-modal" class="hidden overlay">
 					<div class="modal-content">
@@ -123,6 +125,13 @@
 							<label for="haptics-toggle">Haptics (vibration)</label>
 							<label class="switch">
 								<input type="checkbox" id="haptics-toggle" />
+								<span class="slider"></span>
+							</label>
+						</div>
+						<div class="setting-item horizontal hidden" id="pointer-lock-row">
+							<label for="pointer-lock-toggle" title="Click into the game to lock the pointer: slide to choose a piece, Space or click to pick up and put down, Esc to free the pointer">Locked pointer (mouse)</label>
+							<label class="switch">
+								<input type="checkbox" id="pointer-lock-toggle" />
 								<span class="slider"></span>
 							</label>
 						</div>

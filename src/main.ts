@@ -11,6 +11,7 @@ import { THEME } from "./ui/theme"
 import { TutorialManager } from "./ui/tutorial"
 import { VERSION } from "./version"
 import { haptics, mirrorCursorToMac } from "./haptics"
+import { LockedPointer } from "./ui/lockedPointer"
 import { sound } from "./audio"
 import { tweak } from "./tweaks"
 import { SHOTS, runDemo } from "./demo"
@@ -183,6 +184,10 @@ class GameApp {
 
 	// Device Detection
 	private isMobile: boolean = false
+	private lockedPointer!: LockedPointer
+	/** Mouse/trackpad device where the locked pointer is offered. */
+	private lockAvailable = false
+	private lockPromptShown = false
 	private gameOverActionsTimeout: any = null
 	private gameSeed: number | null = null
 	private runId: string | null = null
@@ -234,7 +239,7 @@ class GameApp {
 		this.isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
 		const pauseInst = document.getElementById("pause-instruction")
 		if (pauseInst) {
-			pauseInst.textContent = this.isMobile ? "Tap anywhere to resume" : "Press Esc/Space/P or click anywhere to resume"
+			pauseInst.textContent = this.isMobile ? "Tap anywhere to resume" : "Press Esc or P, or click anywhere, to resume"
 		}
 
 		this.canvas = document.getElementById("game-canvas") as HTMLCanvasElement
@@ -340,6 +345,32 @@ class GameApp {
 		})
 		this.input.isMobile = this.isMobile
 		mirrorCursorToMac(this.canvas)
+		this.lockedPointer = new LockedPointer(this.canvas, this.renderer, {
+			canPlay: () =>
+				!this.isPaused &&
+				!this.engine.isGameOver &&
+				!this.settingsModal?.isVisible() &&
+				!this.leaderboardModal?.isVisible() &&
+				!this.gameOverModal?.isVisible(),
+			shapesPresent: () => this.engine.currentShapes.map((s) => !!s),
+			setSelected: (i) => (this.hoveredShapeIndex = i),
+			onDragStart: (i) => this.onDragStart(i),
+			onDragMove: (x, y) => this.onDragMove(x, y),
+			onDragEnd: () => this.onDragEnd(-1, -1),
+			isDragging: () => !!this.dragShape,
+			takeOverDrag: () => {
+				const st = this.input.dragState
+				if (!st || !this.dragShape || !this.dragPos) return null
+				this.input.cancelDrag()
+				return { index: st.shapeIndex, x: this.dragPos.x, y: this.dragPos.y }
+			},
+			sensitivity: () => this.input.sensitivity,
+			onLockLost: () => this.pauseGame(),
+		})
+		try {
+			this.lockedPointer.enabled = localStorage.getItem("bp_pointer_lock") !== "false"
+		} catch {}
+		this.input.lock = this.lockedPointer
 
 		this.loadHighScore()
 
@@ -705,13 +736,34 @@ class GameApp {
 				e.preventDefault()
 				return
 			}
-			if (e.key === "Escape" || e.key === "p" || e.key === " ") {
+			// Space never pauses. With the locked pointer it picks up / puts down (repeats ignored);
+			// before the lock is taken it takes it, same as clicking the board.
+			if (e.key === " ") {
+				e.preventDefault()
+				if (e.repeat) return
+				if (this.lockedPointer.locked) this.lockedPointer.key(true)
+				else if (this.lockAvailable && this.lockedPointer.waiting) this.lockedPointer.engageFromKey()
+				return
+			}
+			const slot = { z: 0, x: 1, c: 2 }[e.key.toLowerCase()]
+			if (slot !== undefined && !e.metaKey && !e.ctrlKey && !e.altKey && this.lockedPointer.selectSlot(slot)) {
+				e.preventDefault()
+				return
+			}
+			if (e.key === "Escape" || e.key === "p") {
 				// Don't toggle pause if any modal is open
 				if (this.settingsModal.isVisible() || this.leaderboardModal.isVisible() || this.gameOverModal.isVisible() || this.pauseModal.isVisible()) {
 					return
 				}
 				e.preventDefault()
 				this.togglePause()
+			}
+		})
+
+		document.addEventListener("keyup", (e) => {
+			if (e.key === " " && this.lockedPointer.locked) {
+				e.preventDefault()
+				this.lockedPointer.key(false)
 			}
 		})
 
@@ -809,6 +861,24 @@ class GameApp {
 			if ((document.activeElement as HTMLElement | null)?.tagName === "INPUT" && (document.activeElement as HTMLInputElement).type === "text") return
 			toggleSound()
 		})
+		// Locked pointer: only where there's a mouse or trackpad.
+		const lockToggle = document.getElementById("pointer-lock-toggle") as HTMLInputElement | null
+		if (!this.isMobile && matchMedia("(pointer: fine)").matches) {
+			this.lockAvailable = true
+			document.getElementById("pointer-lock-row")?.classList.remove("hidden")
+			document.getElementById("pause-lock-hint")?.classList.toggle("hidden", !this.lockedPointer.enabled)
+		}
+		if (lockToggle) {
+			lockToggle.checked = this.lockedPointer.enabled
+			lockToggle.addEventListener("change", () => {
+				this.lockedPointer.enabled = lockToggle.checked
+				document.getElementById("pause-lock-hint")?.classList.toggle("hidden", !lockToggle.checked)
+				if (!lockToggle.checked) this.lockedPointer.release()
+				try {
+					localStorage.setItem("bp_pointer_lock", String(lockToggle.checked))
+				} catch {}
+			})
+		}
 		if (!haptics.available) document.getElementById("haptics-row")?.classList.add("hidden")
 		window.addEventListener("haptics-available", () => document.getElementById("haptics-row")?.classList.remove("hidden"))
 		if (hapticsToggle) {
@@ -2180,10 +2250,37 @@ class GameApp {
 
 	lastTime: number = 0
 
+
+	/** "Click the board to start" prompt while the locked pointer is waiting to be taken. */
+	private updateLockPrompt() {
+		const el = document.getElementById("lock-prompt")
+		if (!el || !this.lockedPointer) return
+		const show =
+			this.lockAvailable &&
+			this.lockedPointer.waiting &&
+			!this.isPaused &&
+			!this.engine.isGameOver &&
+			!this.tutorialManager?.isActive &&
+			!this.settingsModal?.isVisible() &&
+			!this.leaderboardModal?.isVisible() &&
+			!this.gameOverModal?.isVisible()
+		if (show) {
+			// Centred on the board: that's where the click goes.
+			const { boardRect } = this.renderer.layout
+			el.style.left = `${this.canvas.offsetLeft + boardRect.x + boardRect.w / 2}px`
+			el.style.top = `${this.canvas.offsetTop + boardRect.y + boardRect.h / 2}px`
+		}
+		if (show === this.lockPromptShown) return
+		this.lockPromptShown = show
+		el.classList.toggle("shown", show)
+	}
+
 	loop(timestamp: number) {
 		if (!this.lastTime) this.lastTime = timestamp
 		const dt = (timestamp - this.lastTime) / 1000
 		this.lastTime = timestamp
+		this.lockedPointer?.sync()
+		this.updateLockPrompt()
 
 		// Update animations
 		this.renderer.updateEffects(dt)
