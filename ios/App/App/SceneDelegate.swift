@@ -116,7 +116,16 @@ public class MacHapticsPlugin: CAPPlugin, CAPBridgedPlugin {
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "available", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "perform", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "cursor", returnType: CAPPluginReturnPromise),
     ]
+
+    /// hidden: true hides the Mac pointer (the web view ignores CSS `cursor: none`), so the
+    /// tray's magnetic hover can stand in for it, as in the browser.
+    @objc func cursor(_ call: CAPPluginCall) {
+        let hide = call.getBool("hidden") ?? false
+        DispatchQueue.main.async { MacPointer.set(hidden: hide) }
+        call.resolve()
+    }
 
     @objc func available(_ call: CAPPluginCall) {
         call.resolve(["value": MacTrackpad.performer != nil])
@@ -131,6 +140,20 @@ public class MacHapticsPlugin: CAPPlugin, CAPBridgedPlugin {
             DispatchQueue.main.asyncAfter(deadline: .now() + gap * Double(i)) { MacTrackpad.perform(pattern) }
         }
         call.resolve()
+    }
+}
+
+/// AppKit's NSCursor reached through the runtime; hide/unhide are kept balanced.
+enum MacPointer {
+    private static var hidden = false
+    private static let cls: AnyObject? = ProcessInfo.processInfo.isiOSAppOnMac ? NSClassFromString("NSCursor") : nil
+
+    static func set(hidden h: Bool) {
+        guard h != hidden, let c = cls else { return }
+        let sel = NSSelectorFromString(h ? "hide" : "unhide")
+        guard c.responds(to: sel) else { return }
+        _ = c.perform(sel)
+        hidden = h
     }
 }
 

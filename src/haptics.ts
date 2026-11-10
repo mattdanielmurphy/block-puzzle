@@ -24,8 +24,30 @@ const superapp = (): { haptics: (s: Style) => void } | null => {
 interface MacHapticsPlugin {
 	available(): Promise<{ value: boolean }>
 	perform(o: { pattern: number; count?: number; gapMs?: number }): Promise<void>
+	cursor(o: { hidden: boolean }): Promise<void>
 }
 const MacHaptics = registerPlugin<MacHapticsPlugin>("MacHaptics")
+
+/**
+ * The Mac app's web view ignores CSS `cursor: none`, which the tray's magnetic hover relies on
+ * (the arrow vanishes and the glowing piece stands in for it). Mirror the canvas's cursor style
+ * to the real Mac pointer. No-op everywhere else.
+ */
+export function mirrorCursorToMac(el: HTMLElement) {
+	if (!native) return
+	let hidden = false
+	const set = (h: boolean) => {
+		if (h === hidden) return
+		hidden = h
+		MacHaptics.cursor({ hidden: h }).catch(() => {})
+	}
+	new MutationObserver(() => set(el.style.cursor === "none")).observe(el, { attributes: true, attributeFilter: ["style"] })
+	el.addEventListener("pointerleave", () => {
+		el.style.cursor = ""
+		set(false)
+	})
+	window.addEventListener("blur", () => set(false))
+}
 const MAC_PATTERN: Record<Style, number> = { light: 1, selection: 1, soft: 0, medium: 0, rigid: 2, heavy: 2, success: 2, warning: 2, error: 0 }
 
 /** web-haptics fallback: one pulse per style. */

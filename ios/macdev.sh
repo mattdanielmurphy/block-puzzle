@@ -11,5 +11,8 @@ xcodebuild -project App.xcodeproj -scheme App -configuration Debug -destination 
 cd ../tmp
 rm -rf BlockdokuDev.app && mkdir -p BlockdokuDev.app/Wrapper
 cp -R dd-mac/Build/Products/Debug-iphoneos/App.app BlockdokuDev.app/Wrapper/
+# Name it "Blockdoku Dev" so it can't be mistaken for the TestFlight install, then re-sign.
+/usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName Blockdoku Dev" BlockdokuDev.app/Wrapper/App.app/Info.plist
+codesign --force --preserve-metadata=entitlements,requirements,flags --sign "Apple Development" BlockdokuDev.app/Wrapper/App.app 2>&1 | grep -v "replacing existing" || true
 ln -s Wrapper/App.app BlockdokuDev.app/WrappedBundle
 echo built

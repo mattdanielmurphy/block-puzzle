@@ -10,7 +10,7 @@ import { Simulator } from "./simulation/simulator"
 import { THEME } from "./ui/theme"
 import { TutorialManager } from "./ui/tutorial"
 import { VERSION } from "./version"
-import { haptics } from "./haptics"
+import { haptics, mirrorCursorToMac } from "./haptics"
 import { sound } from "./audio"
 import { tweak } from "./tweaks"
 import { SHOTS, runDemo } from "./demo"
@@ -339,6 +339,7 @@ class GameApp {
 			getSnappedIndex: () => this.hoveredShapeIndex,
 		})
 		this.input.isMobile = this.isMobile
+		mirrorCursorToMac(this.canvas)
 
 		this.loadHighScore()
 
