@@ -228,6 +228,10 @@ class GameApp {
 	// Daily play limit + night cutoff (per device, see src/playLimit.ts)
 	private playLimit = new PlayLimit()
 	private limitLocked = false
+	private limitDeferred = false
+	private limitFirstCheck = true
+	private limitForce = false
+	private limitCheck: () => void = () => {}
 
 	constructor() {
 		this.displayVersion()
@@ -987,8 +991,25 @@ class GameApp {
 			limit.tick(active, now)
 			const st = limit.state(now)
 			if (st.locked) {
+				// Never stop a game mid-run (Matt, 2026-11-23): a run in progress, or its game-over
+				// screen, plays out; the lock lands when the next game would start (restart()) or on launch.
+				const midRun = !this.limitFirstCheck && !this.limitForce && !this.limitLocked && (this.firstBlockPlaced || this.engine.isGameOver)
+				if (midRun) {
+					if (!this.limitDeferred) {
+						this.limitDeferred = true
+						showToast(
+							st.reason === "night"
+								? "Last game for tonight: finish this one"
+								: "That's today's time: finish this game"
+						)
+					}
+					this.limitFirstCheck = false
+					return
+				}
 				if (!this.limitLocked) {
 					this.limitLocked = true
+					this.limitForce = false
+					this.limitDeferred = false
 					this.dragShape = null
 					this.dragPos = null
 					this.ghostPos = null
@@ -1000,8 +1021,6 @@ class GameApp {
 					overlay?.classList.remove("hidden")
 				}
 				const night = st.reason === "night"
-				const icon = document.getElementById("limit-icon")
-				if (icon) icon.className = `limit-icon ${night ? "asleep" : "tired"}`
 				const title = document.getElementById("limit-title")
 				if (title) title.textContent = night ? "Blockdoku is sleeping" : "That's today's Blockdoku"
 				const msg = document.getElementById("limit-message")
@@ -1016,6 +1035,9 @@ class GameApp {
 				if (inEl) inEl.textContent = `${sameDay ? "today" : "tomorrow"}, in ${formatDuration(st.reopenAt.getTime() - now.getTime())}`
 				return
 			}
+			this.limitFirstCheck = false
+			this.limitDeferred = false
+			this.limitForce = false
 			if (this.limitLocked) {
 				// Lock lifted while the app was open: drop back to the pause screen, one tap resumes.
 				this.limitLocked = false
@@ -1028,12 +1050,20 @@ class GameApp {
 					showToast(`Blockdoku closes for the night in ${formatDuration(toCut)}`)
 			}
 		}
-		check()
+		this.limitCheck = check
+		// First check after the constructor finishes: locking needs the rest of the game set up
+		// (opening the app during the night lock crashed startup when this ran inline).
+		setTimeout(check, 0)
 		setInterval(check, 1000)
 		document.addEventListener("visibilitychange", check)
 	}
 
 	restart() {
+		// A deferred play-limit lock lands here: once the fresh board is set up, check again (before any move).
+		if (this.limitDeferred) {
+			this.limitForce = true
+			queueMicrotask(() => this.limitCheck())
+		}
 		// Clear pause state and timer
 		if (this.isPaused) {
 			this.resumeGame()
@@ -2593,6 +2623,7 @@ window.onload = () => {
 		new Simulator(canvas)
 	} else {
 		const app = new GameApp()
+		if (import.meta.env.VITE_LIMIT_TEST) (window as any).__app = app // play-limit test builds only
 		if (SHOTS) {
 			document.body.classList.remove("dev-mode")
 			document.getElementById("dev-indicator")?.classList.add("hidden")

@@ -1562,24 +1562,19 @@ body.dev-mode {
     background: var(--lim-card);
     border: 1px solid var(--lim-line);
 }
-/* The game's own face, tired (limit) or asleep (night): faces-rest.png, 2 frames. */
+/* The game's guy asleep in a nightcap with ZZZZ (Matt, 2026-11-23): faces-rest.png, one frame. */
 .limit-icon {
-    width: 128px;
-    height: 128px;
+    width: 168px;
+    height: 168px;
     margin: 0 auto 18px;
     border-radius: 14px;
-    background: #0b1027 url('assets/faces-rest.png') no-repeat 100% 0 / 200% 100%;
+    background: #000 url('assets/faces-rest.png') no-repeat center / 100% 100%;
     image-rendering: pixelated;
     border: 2px solid #1d2b4d;
     box-shadow: 0 0 10px rgba(126, 224, 244, 0.3);
-}
-.limit-icon.asleep {
-    background-position: 0 0;
     animation: limit-breathe 4s ease-in-out infinite;
 }
-.limit-icon.tired { animation: limit-sag 5s ease-in-out infinite; }
 @keyframes limit-breathe { 50% { transform: scale(1.035); } }
-@keyframes limit-sag { 50% { transform: translateY(3px) rotate(-1.5deg); } }
 @media (prefers-reduced-motion: reduce) { .limit-icon, #limit-overlay { animation: none !important; } }
 #limit-overlay h1 {
     margin: 0 0 8px;

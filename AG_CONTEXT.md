@@ -60,6 +60,8 @@
 ## Daily play limit (2026-11-23)
 - `src/playLimit.ts`: 2 h of play a day + locked midnight–5 AM (device local time), **on for everyone by default** (Matt: "let's make these global limits"); Settings → "Daily play limit" can switch it off per device (with a confirm).
 - Counts only time on screen, not paused, not game over; gaps over 2 s (sleep, background) aren't counted. The play day and the allowance reset at the cutoff end (5 AM), not midnight.
-- Lock screen `#limit-overlay` (outside `#app`, fixed, z 1000): the game's face asleep (night) or exhausted (limit) from `public/assets/faces-rest.png` (made by `scripts/faces/make_rest.py`), reopen time + countdown, light/dark via `prefers-color-scheme`. Heads-up toast N min before.
+- **Never interrupts a game** (Matt): if the lock comes due mid-run or on the game-over screen, a toast says it's the last game; the lock lands when the next game starts (`restart()`) or on app launch.
+- Lock screen `#limit-overlay` (outside `#app`, fixed, z 1000): the guy asleep in a red striped nightcap with ZZZZ (`public/assets/faces-rest.png`, drawn by `scripts/faces/make_rest.py` from faces.jpg frame 0), reopen time + countdown, light/dark via `prefers-color-scheme`. Heads-up toast N min before. First check runs after the constructor (`setTimeout`): running it inline crashed launch during the night lock.
+- End-to-end check: `scripts/limit-e2e.ts` (headless Chrome via CDP).
 - Knobs: `limit.*` in tweaks.json. Test builds: `VITE_LIMIT_TEST="daily=25,warn=10"` or `"cutIn=20,cutFor=60"` (seconds) shortens everything. Unit tests: `bun x vitest run tests/playLimit.test.ts`.
 - Changing the device clock gets around it; not handled.
