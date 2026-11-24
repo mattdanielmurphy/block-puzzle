@@ -14,6 +14,7 @@ import { haptics, mirrorCursorToMac } from "./haptics"
 import { LockedPointer } from "./ui/lockedPointer"
 import { sound } from "./audio"
 import { tweak } from "./tweaks"
+import { PlayLimit, formatClock, formatDuration } from "./playLimit"
 import { SHOTS, runDemo } from "./demo"
 import { inject } from "@vercel/analytics"
 
@@ -224,6 +225,10 @@ class GameApp {
 	private pauseModal!: Modal
 	private gameOverRevealRequested: boolean = false
 
+	// Daily play limit + night cutoff (per device, see src/playLimit.ts)
+	private playLimit = new PlayLimit()
+	private limitLocked = false
+
 	constructor() {
 		this.displayVersion()
 
@@ -409,6 +414,7 @@ class GameApp {
 
 		this.bindControls()
 		this.initSettings()
+		this.initPlayLimit()
 
 		// Load used quotes from localStorage
 		const savedUsedQuotes = localStorage.getItem("bp_used_quotes")
@@ -932,6 +938,99 @@ class GameApp {
 				window.location.href = url.toString()
 			}
 		})
+	}
+
+	private initPlayLimit() {
+		const limit = this.playLimit
+		const overlay = document.getElementById("limit-overlay")
+		const toggle = document.getElementById("limit-toggle") as HTMLInputElement | null
+		const hint = document.getElementById("limit-hint")
+		const toast = document.getElementById("limit-toast")
+
+		const syncHint = () => {
+			if (!hint) return
+			const base = limit.describe()
+			hint.textContent = limit.enabled ? `${base} · ${formatDuration(limit.playedMs())} played today` : base
+		}
+		if (toggle) {
+			toggle.checked = limit.enabled
+			toggle.addEventListener("change", () => {
+				if (!toggle.checked && !confirm("Turn off the daily play limit on this device?")) {
+					toggle.checked = true
+					return
+				}
+				limit.enabled = toggle.checked
+				syncHint()
+				check()
+			})
+		}
+		syncHint()
+		document.getElementById("settings-btn")?.addEventListener("click", syncHint)
+
+		let toastTimer: any = null
+		const showToast = (text: string) => {
+			if (!toast) return
+			toast.textContent = text
+			toast.classList.remove("hidden", "fade")
+			clearTimeout(toastTimer)
+			toastTimer = setTimeout(() => {
+				toast.classList.add("fade")
+				toastTimer = setTimeout(() => toast.classList.add("hidden"), 700)
+			}, 4000)
+		}
+
+		const check = () => {
+			const now = new Date()
+			if (toggle && toggle.checked !== limit.enabled) toggle.checked = limit.enabled
+			const active =
+				document.visibilityState === "visible" && !this.isPaused && !this.engine.isGameOver && !this.limitLocked
+			limit.tick(active, now)
+			const st = limit.state(now)
+			if (st.locked) {
+				if (!this.limitLocked) {
+					this.limitLocked = true
+					this.dragShape = null
+					this.dragPos = null
+					this.ghostPos = null
+					this.lockedPointer?.release()
+					this.settingsModal?.hide()
+					this.leaderboardModal?.hide()
+					this.pauseGame()
+					this.saveGameState()
+					overlay?.classList.remove("hidden")
+				}
+				const night = st.reason === "night"
+				const icon = document.getElementById("limit-icon")
+				if (icon) icon.className = `limit-icon ${night ? "asleep" : "tired"}`
+				const title = document.getElementById("limit-title")
+				if (title) title.textContent = night ? "Blockdoku is sleeping" : "That's today's Blockdoku"
+				const msg = document.getElementById("limit-message")
+				if (msg)
+					msg.textContent = night
+						? "The board takes a break overnight. Get some sleep and come back fresh."
+						: `You've played your ${formatDuration(limit.dailyMs)} for today. Nice work.`
+				const time = document.getElementById("limit-reopen-time")
+				if (time) time.textContent = formatClock(st.reopenAt)
+				const inEl = document.getElementById("limit-reopen-in")
+				const sameDay = st.reopenAt.toDateString() === now.toDateString()
+				if (inEl) inEl.textContent = `${sameDay ? "today" : "tomorrow"}, in ${formatDuration(st.reopenAt.getTime() - now.getTime())}`
+				return
+			}
+			if (this.limitLocked) {
+				// Lock lifted while the app was open: drop back to the pause screen, one tap resumes.
+				this.limitLocked = false
+				overlay?.classList.add("hidden")
+			}
+			if (limit.enabled) {
+				const toCut = limit.msUntilCutoff(now)
+				if (limit.shouldWarn(now)) showToast(`${formatDuration(st.remainingMs)} of Blockdoku left today`)
+				else if (toCut <= limit.warnMs && toCut > limit.warnMs - 1500)
+					showToast(`Blockdoku closes for the night in ${formatDuration(toCut)}`)
+			}
+		}
+		check()
+		setInterval(check, 1000)
+		document.addEventListener("visibilitychange", check)
 	}
 
 	restart() {

@@ -142,6 +142,13 @@
 								<span class="slider"></span>
 							</label>
 						</div>
+						<div class="setting-item horizontal">
+							<label for="limit-toggle">Daily play limit<small id="limit-hint" class="setting-hint">2 h a day, closed 12 – 5 AM</small></label>
+							<label class="switch">
+								<input type="checkbox" id="limit-toggle" />
+								<span class="slider"></span>
+							</label>
+						</div>
 						<div class="setting-item" style="margin-top: 20px; border-top: 1px solid #333; padding-top: 15px">
 							<button id="clear-cache-btn" class="secondary-btn" style="border: 1px solid #ff4444; color: #ff4444">Clear Cache & Reload</button>
 						</div>
@@ -166,6 +173,20 @@
 				<span id="app-version"></span>
 			</footer> -->
 		</div>
+		<div id="limit-overlay" class="hidden" role="dialog" aria-modal="true" aria-labelledby="limit-title">
+			<div class="limit-card">
+				<div class="limit-icon" id="limit-icon" aria-hidden="true"></div>
+				<h1 id="limit-title">See you tomorrow</h1>
+				<p id="limit-message">That's your Blockdoku for today.</p>
+				<div class="limit-reopen">
+					<span class="limit-reopen-label">Play reopens</span>
+					<span class="limit-reopen-time" id="limit-reopen-time">5:00 AM</span>
+					<span class="limit-reopen-in" id="limit-reopen-in">in 6 h</span>
+				</div>
+				<p class="limit-saved">Your game is saved right where you left&nbsp;it.</p>
+			</div>
+		</div>
+		<div id="limit-toast" class="hidden" role="status"></div>
 		<script type="module" src="/src/main.ts"></script>
 	</body>
 </html>

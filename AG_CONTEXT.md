@@ -57,3 +57,9 @@
 - **Mac window**: `SceneDelegate.swift` `MacWindow` starts a 470×820 portrait window, centred, then remembers the player's size (`macWindowSize`). `UIRequiresFullScreen` is NO.
 - **Screenshot tour**: `VITE_SHOTS=1` build (or `?shots=1` in dev) plays a scripted tour (playing, line clear, pause, settings, game over) and restores localStorage after.
 - **Mac test build**: `ios/macdev.sh [shots]` builds `ios/tmp/BlockdokuDev.app` (bundle `ca.mattmurphy.blockdoku.dev`, so the real save is untouched); launch it in the background with `open -g` on that path.
+## Daily play limit (2026-11-23)
+- `src/playLimit.ts`: 2 h of play a day + locked midnight–5 AM (device local time), **on for everyone by default** (Matt: "let's make these global limits"); Settings → "Daily play limit" can switch it off per device (with a confirm).
+- Counts only time on screen, not paused, not game over; gaps over 2 s (sleep, background) aren't counted. The play day and the allowance reset at the cutoff end (5 AM), not midnight.
+- Lock screen `#limit-overlay` (outside `#app`, fixed, z 1000): the game's face asleep (night) or exhausted (limit) from `public/assets/faces-rest.png` (made by `scripts/faces/make_rest.py`), reopen time + countdown, light/dark via `prefers-color-scheme`. Heads-up toast N min before.
+- Knobs: `limit.*` in tweaks.json. Test builds: `VITE_LIMIT_TEST="daily=25,warn=10"` or `"cutIn=20,cutFor=60"` (seconds) shortens everything. Unit tests: `bun x vitest run tests/playLimit.test.ts`.
+- Changing the device clock gets around it; not handled.

@@ -1518,3 +1518,109 @@ body.dev-mode {
 @media (prefers-reduced-motion: reduce) {
     #lock-prompt.shown { animation: none; }
 }
+
+/* ── Daily play limit (2026-11-23) ─────────────────────────────────────────
+   Colours reuse the app's own tokens: dark = the game's night palette,
+   light = the same tokens flipped (text colour as the page, page colour as text). */
+#limit-overlay {
+    --lim-bg: #050815;
+    --lim-card: #0c0f26;
+    --lim-text: #e5e7ff;
+    --lim-muted: rgba(229, 231, 255, 0.62);
+    --lim-accent: #5fc9df;
+    --lim-line: rgba(95, 201, 223, 0.28);
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: calc(24px + var(--safe-area-top)) 16px calc(24px + var(--safe-area-bottom));
+    background: var(--lim-bg);
+    color: var(--lim-text);
+    text-align: center;
+    animation: limit-in 0.5s ease-out;
+}
+@media (prefers-color-scheme: light) {
+    #limit-overlay {
+        --lim-bg: #e5e7ff;
+        --lim-card: #f4f5ff;
+        --lim-text: #050815;
+        --lim-muted: rgba(5, 8, 21, 0.6);
+        --lim-accent: #1f8fa8;
+        --lim-line: rgba(31, 143, 168, 0.3);
+    }
+}
+@keyframes limit-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+.limit-card {
+    width: min(360px, 100%);
+    padding: 32px 24px 28px;
+    border-radius: 24px;
+    background: var(--lim-card);
+    border: 1px solid var(--lim-line);
+}
+/* The game's own face, tired (limit) or asleep (night): faces-rest.png, 2 frames. */
+.limit-icon {
+    width: 128px;
+    height: 128px;
+    margin: 0 auto 18px;
+    border-radius: 14px;
+    background: #0b1027 url('assets/faces-rest.png') no-repeat 100% 0 / 200% 100%;
+    image-rendering: pixelated;
+    border: 2px solid #1d2b4d;
+    box-shadow: 0 0 10px rgba(126, 224, 244, 0.3);
+}
+.limit-icon.asleep {
+    background-position: 0 0;
+    animation: limit-breathe 4s ease-in-out infinite;
+}
+.limit-icon.tired { animation: limit-sag 5s ease-in-out infinite; }
+@keyframes limit-breathe { 50% { transform: scale(1.035); } }
+@keyframes limit-sag { 50% { transform: translateY(3px) rotate(-1.5deg); } }
+@media (prefers-reduced-motion: reduce) { .limit-icon, #limit-overlay { animation: none !important; } }
+#limit-overlay h1 {
+    margin: 0 0 8px;
+    font-size: 1.7rem;
+    text-wrap: balance;
+    color: var(--lim-text);
+}
+#limit-message {
+    margin: 0 0 22px;
+    color: var(--lim-muted);
+    line-height: 1.45;
+    text-wrap: pretty;
+}
+.limit-reopen {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 16px;
+    border-radius: 16px;
+    border: 1px solid var(--lim-line);
+}
+.limit-reopen-label { font-size: 0.8rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--lim-muted); }
+.limit-reopen-time { font-size: 2.2rem; font-weight: 700; color: var(--lim-accent); font-variant-numeric: tabular-nums; }
+.limit-reopen-in { font-size: 0.95rem; color: var(--lim-muted); font-variant-numeric: tabular-nums; }
+.limit-saved { margin: 18px 0 0; font-size: 0.85rem; color: var(--lim-muted); text-wrap: pretty; }
+
+#limit-toast {
+    position: fixed;
+    left: 50%;
+    top: calc(12px + var(--safe-area-top));
+    transform: translateX(-50%);
+    z-index: 900;
+    padding: 8px 14px;
+    border-radius: 999px;
+    font-size: 0.85rem;
+    color: #e5e7ff;
+    background: rgba(12, 15, 38, 0.82);
+    border: 1px solid rgba(95, 201, 223, 0.35);
+    pointer-events: none;
+    transition: opacity 0.6s ease;
+    white-space: nowrap;
+}
+#limit-toast.fade { opacity: 0; }
+.setting-hint { display: block; font-size: 0.75rem; opacity: 0.65; margin-top: 2px; }
