@@ -1562,9 +1562,9 @@ body.dev-mode {
     background: var(--lim-card);
     border: 1px solid var(--lim-line);
 }
-/* The game's guy asleep in a nightcap with ZZZZ (Matt, 2026-11-23): faces-rest.png, one frame. */
+/* The game's guy asleep, eyes closed, ZZZZ to the right (Matt, 2026-11-23): faces-rest.png, 263x202. */
 .limit-icon {
-    width: 168px;
+    width: 219px;
     height: 168px;
     margin: 0 auto 18px;
     border-radius: 14px;
