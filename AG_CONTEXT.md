@@ -65,3 +65,7 @@
 - End-to-end check: `scripts/limit-e2e.ts` (headless Chrome via CDP).
 - Knobs: `limit.*` in tweaks.json. Test builds: `VITE_LIMIT_TEST="daily=25,warn=10"` or `"cutIn=20,cutFor=60"` (seconds) shortens everything. Unit tests: `bun x vitest run tests/playLimit.test.ts`.
 - Changing the device clock gets around it; not handled.
+## Leaderboard reset on every major release (project rule, Matt, 2026-11-25)
+- Matt: "every time there's a new major release, where we'll have big changes that affect scoring etc, we'll do a leaderboard reset because it wouldn't be fair otherwise."
+- Any major version that changes scoring or fairness (v2, v3…) starts a fresh leaderboard. Old boards are kept as a read-only archive (e.g. "v1 all-time"), never deleted, unless Matt says otherwise.
+- Scoring/fairness changes are held for the next major and ship together with its reset (first one: the v2 timer grace window, see IDEAS.md).
