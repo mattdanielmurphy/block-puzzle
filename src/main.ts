@@ -14,6 +14,7 @@ import { haptics, mirrorCursorToMac } from "./haptics"
 import { LockedPointer } from "./ui/lockedPointer"
 import { sound } from "./audio"
 import { tweak } from "./tweaks"
+import { DragHaptics, bestPlacement } from "./ui/dragFeel"
 import { PlayLimit, formatClock, formatDuration } from "./playLimit"
 import { SHOTS, runDemo } from "./demo"
 import { inject } from "@vercel/analytics"
@@ -2114,9 +2115,7 @@ class GameApp {
 	}
 
 	onDragStart(index: number) {
-		this.dragLast = null
-		this.dragVel = 0
-		this.dragInside = { h: true, top: true }
+		this.dragFeel.reset()
 		if (this.engine.isGameOver || this.isPaused) return
 		const shape = this.engine.currentShapes[index]
 		if (shape) {
@@ -2188,33 +2187,7 @@ class GameApp {
 		// Floating point grid coordinates
 		const cFloat = (anchorX - boardRect.x) / stride
 		const rFloat = (anchorY - boardRect.y) / stride
-
-		const startR = Math.round(rFloat)
-		const startC = Math.round(cFloat)
-
-		let bestMatch: { r: number; c: number; dist: number } | null = null
-
-		// Check 3x3 neighborhood around the closest integer cell
-		for (let r = startR - 1; r <= startR + 1; r++) {
-			for (let c = startC - 1; c <= startC + 1; c++) {
-				// Check if valid placement
-				if (this.engine.canPlace(shape, r, c)) {
-					// Euclidean distance from ideal float position
-					const dist = Math.sqrt(Math.pow(r - rFloat, 2) + Math.pow(c - cFloat, 2))
-
-					if (!bestMatch || dist < bestMatch.dist) {
-						bestMatch = { r, c, dist }
-					}
-				}
-			}
-		}
-
-		// Snap threshold
-		if (bestMatch && bestMatch.dist < this.SNAP_THRESHOLD) {
-			return { r: bestMatch.r, c: bestMatch.c }
-		}
-
-		return null
+		return bestPlacement((r, c) => this.engine.canPlace(shape, r, c), rFloat, cFloat, this.SNAP_THRESHOLD)
 	}
 
 	onDragMove(x: number, y: number) {
@@ -2231,58 +2204,28 @@ class GameApp {
 		const anchorX = x + offset.x
 		const anchorY = y + offset.y
 
-		const prevGhost = this.ghostPos
 		const placement = this.getBestPlacement(this.dragShape, anchorX, anchorY)
 		this.ghostPos = placement
 
-		// Haptic snap: fire when ghost transitions from null → valid position
-		if (placement && !prevGhost) {
-			haptics.snap()
-		} else if (placement && prevGhost && (placement.r !== prevGhost.r || placement.c !== prevGhost.c)) {
-			// A tick each time the piece moves one cell; harder when it crosses a 3×3 box line.
-			const box = (n: number) => Math.floor(n / 3)
-			haptics.tick(box(placement.r) !== box(prevGhost.r) || box(placement.c) !== box(prevGhost.c))
-		} else if (!placement && prevGhost && this.dragInside.h) {
-			// Slid onto a spot where the piece can't go.
-			haptics.unsnap()
-		}
-		this.dragWallHaptics(x, y, anchorX, anchorY)
-	}
-
-	/** Drag feel: track pointer speed and "thud" when the piece is shoved past a board edge. */
-	private dragVel = 0
-	private dragLast: { x: number; y: number; t: number } | null = null
-	private dragInside = { h: true, top: true }
-	private dragWallHaptics(x: number, y: number, anchorX: number, anchorY: number) {
-		const now = performance.now()
-		if (this.dragLast) {
-			const dt = Math.max(1, now - this.dragLast.t)
-			const v = Math.hypot(x - this.dragLast.x, y - this.dragLast.y) / dt // px per ms
-			this.dragVel = this.dragVel * 0.6 + v * 0.4
-		}
-		this.dragLast = { x, y, t: now }
-		if (!this.dragShape) return
-		const { boardRect } = this.renderer.layout
-		const pitch = boardRect.cellSize + THEME.metrics.cellGap
+		// Haptics only on spots the piece can really be dropped on (see ui/dragFeel.ts).
+		const pitch = boardRect.cellSize + gap
 		let maxR = 0,
 			maxC = 0
 		this.dragShape.cells.forEach((p) => {
 			maxR = Math.max(maxR, p.r)
 			maxC = Math.max(maxC, p.c)
 		})
-		const w = maxC + 1,
-			h = maxR + 1
-		const colF = (anchorX - boardRect.x) / pitch
 		const rowF = (anchorY - boardRect.y) / pitch
-		const overBoardRows = rowF + h > 0.5 && rowF < GRID_SIZE - 0.5
-		const insideH = colF >= -0.5 && colF + w <= GRID_SIZE + 0.5
-		const insideTop = rowF >= -0.5
-		// Speed in board-cells per 100ms, mapped to 0..1 strength (a quick shove ≈ 1).
-		const strength = Math.min(1, ((this.dragVel * 100) / pitch) / 3)
-		if (overBoardRows && this.dragInside.h && !insideH && strength > 0.12) haptics.slam(strength)
-		if (this.dragInside.top && !insideTop && insideH && strength > 0.12) haptics.slam(strength)
-		this.dragInside = { h: insideH || !overBoardRows, top: insideTop }
+		const colF = (anchorX - boardRect.x) / pitch
+		for (const h of this.dragFeel.move(placement, x, y, rowF, colF, maxR + 1, maxC + 1, pitch, GRID_SIZE, performance.now())) {
+			if (h.kind === "snap") haptics.snap()
+			else if (h.kind === "tick") haptics.tick(h.crossedBox)
+			else haptics.slam(h.strength)
+		}
 	}
+
+	/** Drag feel: snap/tick/edge-thud decisions for the current drag. */
+	private dragFeel = new DragHaptics()
 
 	onDragEnd(r: number, c: number) {
 		if (!this.dragShape || this.isPaused) return

@@ -105,6 +105,14 @@
       "step": 0.1,
       "note": "Seconds the 'Streak \u00d7N' label floats"
     },
+    "drag.topBoost": {
+      "value": 0.15,
+      "default": 0.15,
+      "min": 0,
+      "max": 0.5,
+      "step": 0.05,
+      "note": "Extra vertical reach near the top of the board while dragging: 0.15 = pieces move 15% further per finger move at the top row, fading to none at the bottom row; 0 = off"
+    },
     "haptics.slam": {
       "value": 1,
       "default": 1,

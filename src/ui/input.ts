@@ -3,6 +3,8 @@ import { GameState, Shape } from "../engine/types"
 import { GameRenderer } from "./renderer"
 import { THEME } from "./theme"
 import type { LockedPointer } from "./lockedPointer"
+import { topBoostOffset } from "./dragFeel"
+import { tweak } from "../tweaks"
 
 export interface DragState {
 	shapeIndex: number
@@ -107,13 +109,22 @@ export class InputManager {
 		this.dragState.currentX = x
 		this.dragState.currentY = y
 
-		const deltaX = (x - this.dragState.startX) * this.sensitivity
-		const deltaY = (y - this.dragState.startY) * this.sensitivity
-
-		const visualX = this.dragState.startX + this.dragState.touchOffsetX + deltaX
-		const visualY = this.dragState.startY + this.dragState.touchOffsetY + deltaY
-
+		const { x: visualX, y: visualY } = this.visualPos(x, y)
 		this.events.onDragMove(visualX, visualY)
+	}
+
+	/**
+	 * Where the dragged piece's centre sits for a finger at (x, y): finger travel × the player's
+	 * sensitivity, plus a subtle extra lift that grows toward the top of the board, since the top
+	 * rows take the most thumb travel (tweak drag.topBoost; 0 = off).
+	 */
+	private visualPos(x: number, y: number) {
+		const d = this.dragState!
+		const visualX = d.startX + d.touchOffsetX + (x - d.startX) * this.sensitivity
+		const baseY = d.startY + d.touchOffsetY + (y - d.startY) * this.sensitivity
+		const { boardRect } = this.renderer.layout
+		const lift = topBoostOffset(baseY, boardRect.y, boardRect.y + boardRect.h, tweak("drag.topBoost", 0.15))
+		return { x: visualX, y: baseY - lift }
 	}
 
 	/** Locked-pointer play took this drag over: forget it without dropping. */
@@ -131,11 +142,7 @@ export class InputManager {
 		const gap = THEME.metrics.cellGap
 		const cellSize = boardRect.cellSize + gap
 
-		const deltaX = (this.dragState.currentX - this.dragState.startX) * this.sensitivity
-		const deltaY = (this.dragState.currentY - this.dragState.startY) * this.sensitivity
-
-		const visualX = this.dragState.startX + this.dragState.touchOffsetX + deltaX
-		const visualY = this.dragState.startY + this.dragState.touchOffsetY + deltaY
+		const { x: visualX, y: visualY } = this.visualPos(this.dragState.currentX, this.dragState.currentY)
 
 		const c = Math.round((visualX - boardRect.x) / cellSize)
 		const r = Math.round((visualY - boardRect.y) / cellSize)
