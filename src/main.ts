@@ -1023,7 +1023,7 @@ class GameApp {
 				}
 				const night = st.reason === "night"
 				const title = document.getElementById("limit-title")
-				if (title) title.textContent = night ? "Blockdoku is sleeping" : "That's today's Blockdoku"
+				if (title) title.textContent = night ? "Don Blocko is sleeping" : "Don Blocko is done for today"
 				const msg = document.getElementById("limit-message")
 				if (msg)
 					msg.textContent = night
@@ -1046,9 +1046,9 @@ class GameApp {
 			}
 			if (limit.enabled) {
 				const toCut = limit.msUntilCutoff(now)
-				if (limit.shouldWarn(now)) showToast(`${formatDuration(st.remainingMs)} of Blockdoku left today`)
+				if (limit.shouldWarn(now)) showToast(`${formatDuration(st.remainingMs)} of Don Blocko left today`)
 				else if (toCut <= limit.warnMs && toCut > limit.warnMs - 1500)
-					showToast(`Blockdoku closes for the night in ${formatDuration(toCut)}`)
+					showToast(`Don Blocko closes for the night in ${formatDuration(toCut)}`)
 			}
 		}
 		this.limitCheck = check

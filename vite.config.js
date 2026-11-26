@@ -19,8 +19,8 @@ export default defineConfig({
 				ignoreURLParametersMatching: [/^v$/], // Ignore the ?v= timestamp from build.js
 			},
 			manifest: {
-				name: "Blockdoku",
-				short_name: "Blockdoku",
+				name: "Don Blocko",
+				short_name: "Don Blocko",
 				start_url: "/",
 				scope: "/",
 				display: "standalone",
