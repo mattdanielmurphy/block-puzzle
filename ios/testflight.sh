@@ -4,6 +4,8 @@
 # Exit 3 + "NEEDS_ASC_APP" line = App Store Connect has no app record yet: an agent runs
 # ~/projects/ai-os/scripts/asc/ensure_app.js in Chrome (see README there), then reruns with --export-only.
 set -e
+# Xcode's IPA export calls rsync; Homebrew's rsync 3.x breaks it ("Copy failed"), so put the system one first.
+export PATH=/usr/bin:/bin:/usr/sbin:/sbin:$PATH
 cd "$(dirname "$0")/.."
 TEAM=457ZKWNUB2
 BUNDLE=ca.mattmurphy.blockdoku
