@@ -57,13 +57,16 @@
 - **Mac window**: `SceneDelegate.swift` `MacWindow` starts a 470×820 portrait window, centred, then remembers the player's size (`macWindowSize`). `UIRequiresFullScreen` is NO.
 - **Screenshot tour**: `VITE_SHOTS=1` build (or `?shots=1` in dev) plays a scripted tour (playing, line clear, pause, settings, game over) and restores localStorage after.
 - **Mac test build**: `ios/macdev.sh [shots]` builds `ios/tmp/BlockdokuDev.app` (bundle `ca.mattmurphy.blockdoku.dev`, so the real save is untouched); launch it in the background with `open -g` on that path.
-## Daily play limit (2026-11-23)
-- `src/playLimit.ts`: 2 h of play a day + locked midnight–5 AM (device local time), **on for everyone by default** (Matt: "let's make these global limits"); Settings → "Daily play limit" can switch it off per device (with a confirm).
-- Counts only time on screen, not paused, not game over; gaps over 2 s (sleep, background) aren't counted. The play day and the allowance reset at the cutoff end (5 AM), not midnight.
-- **Never interrupts a game** (Matt): if the lock comes due mid-run or on the game-over screen, a toast says it's the last game; the lock lands when the next game starts (`restart()`) or on app launch.
-- Lock screen `#limit-overlay` (outside `#app`, fixed, z 1000): the guy asleep in his helmet, eyes closed, ZZZZ rising to the right (no cap: Matt, 2026-11-24) (`public/assets/faces-rest.png`, drawn by `scripts/faces/make_rest.py` from faces.jpg frame 0), reopen time + countdown, light/dark via `prefers-color-scheme`. Heads-up toast N min before. First check runs after the constructor (`setTimeout`): running it inline crashed launch during the night lock.
-- End-to-end check: `scripts/limit-e2e.ts` (headless Chrome via CDP).
-- Knobs: `limit.*` in tweaks.json. Test builds: `VITE_LIMIT_TEST="daily=25,warn=10"` or `"cutIn=20,cutFor=60"` (seconds) shortens everything. Unit tests: `bun x vitest run tests/playLimit.test.ts`.
+## Play limits (2026-11-23; reworked 2026-11-27)
+- `src/playLimit.ts`, **on for everyone by default** (Matt: "let's make these global limits"), off by default on App Shack's public build; Settings → "Play limits" switches it off per device (with a confirm).
+- **No night lock** (removed 2026-11-27, Matt: "Remove the nighttime block"). Two limits instead:
+  - **Daily, rolling**: at most 2 h of play in any 24 h (no fixed reset time). Once hit, it reopens when enough old play has left the window to give back `limit.reopenMinutes` (10) of play. The reopen time is stored (`bp_limit_reopen`) and moves later if a finishing game keeps playing.
+  - **Session**: 30 min of play in a row; a 15 min break ends the session, and the lock lifts when that break is done.
+- Play is stored as merged `[start, end]` segments in `bp_limit_log`, pruned to the window. Counts only time on screen, not paused, not game over; gaps over 2 s (sleep, background) aren't counted.
+- **Never interrupts a game** (Matt): if a lock comes due mid-run or on the game-over screen, a toast says it's the last game; the lock lands when the next game starts (`restart()`) or on app launch (`lockLandsNow()`).
+- Lock screen `#limit-overlay` (outside `#app`, fixed, z 1000): the guy asleep in his helmet, ZZZZ rising (`public/assets/faces-rest.png`, drawn by `scripts/faces/make_rest.py`), title by reason ("Take a breather" / "That's plenty for today"), reopen time + countdown, light/dark via `prefers-color-scheme`. Heads-up toast `limit.warnMinutes` before either limit. First check runs after the constructor (`setTimeout`): running it inline crashed launch while locked.
+- Knobs: `limit.*` in tweaks.json (dailyMinutes, windowHours, reopenMinutes, sessionMinutes, breakMinutes, warnMinutes). Test builds: `VITE_LIMIT_TEST="daily=40,window=60,session=6,break=5,reopen=5,warn=2"` (seconds) shortens everything and turns it on.
+- Checks: `bun x vitest run tests/playLimit.test.ts`; end-to-end `scripts/limit-e2e.ts` (headless Chrome via CDP; fakes 3 AM with a time-zone override; screenshots both lock screens light/dark to `tmp/limit-*.png`).
 - Changing the device clock gets around it; not handled.
 ## Leaderboard reset on every major release (project rule, Matt, 2026-11-25)
 - Matt: "every time there's a new major release, where we'll have big changes that affect scoring etc, we'll do a leaderboard reset because it wouldn't be fair otherwise."

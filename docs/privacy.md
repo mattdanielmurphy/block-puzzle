@@ -6,7 +6,7 @@ Don Blocko is a block puzzle game. It has no accounts and no in-app purchases, a
 
 ## What stays on your device
 
-Your game in progress, best scores, settings and daily play-limit time are stored only on your device.
+Your game in progress, best scores, settings and play-limit time are stored only on your device.
 
 ## What reaches our server
 

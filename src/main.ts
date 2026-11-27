@@ -15,7 +15,7 @@ import { LockedPointer } from "./ui/lockedPointer"
 import { sound } from "./audio"
 import { tweak } from "./tweaks"
 import { DragHaptics, bestPlacement } from "./ui/dragFeel"
-import { PlayLimit, formatClock, formatDuration } from "./playLimit"
+import { PlayLimit, formatClock, formatDuration, lockLandsNow } from "./playLimit"
 import { SHOTS, runDemo } from "./demo"
 import { inject } from "@vercel/analytics"
 
@@ -232,7 +232,7 @@ class GameApp {
 	private pauseModal!: Modal
 	private gameOverRevealRequested: boolean = false
 
-	// Daily play limit + night cutoff (per device, see src/playLimit.ts)
+	// Play limits: rolling daily + session (per device, see src/playLimit.ts)
 	private playLimit = new PlayLimit()
 	private limitLocked = false
 	private limitDeferred = false
@@ -993,12 +993,12 @@ class GameApp {
 		const syncHint = () => {
 			if (!hint) return
 			const base = limit.describe()
-			hint.textContent = limit.enabled ? `${base} · ${formatDuration(limit.playedMs())} played today` : base
+			hint.textContent = limit.enabled ? `${base} · ${formatDuration(limit.playedMs())} played in the last ${limit.windowText()}` : base
 		}
 		if (toggle) {
 			toggle.checked = limit.enabled
 			toggle.addEventListener("change", () => {
-				if (!toggle.checked && !confirm("Turn off the daily play limit on this device?")) {
+				if (!toggle.checked && !confirm("Turn off the play limits on this device?")) {
 					toggle.checked = true
 					return
 				}
@@ -1032,14 +1032,19 @@ class GameApp {
 			if (st.locked) {
 				// Never stop a game mid-run (Matt, 2026-11-23): a run in progress, or its game-over
 				// screen, plays out; the lock lands when the next game would start (restart()) or on launch.
-				const midRun = !this.limitFirstCheck && !this.limitForce && !this.limitLocked && (this.firstBlockPlaced || this.engine.isGameOver)
-				if (midRun) {
+				const landsNow = lockLandsNow({
+					firstCheck: this.limitFirstCheck,
+					nextGameStarting: this.limitForce,
+					alreadyLocked: this.limitLocked,
+					midGame: this.firstBlockPlaced || this.engine.isGameOver,
+				})
+				if (!landsNow) {
 					if (!this.limitDeferred) {
 						this.limitDeferred = true
 						showToast(
-							st.reason === "night"
-								? "Last game for tonight: finish this one"
-								: "That's today's time: finish this game"
+							st.reason === "session"
+								? "Last game for now: finish this one, then take a breather"
+								: `That's your ${formatDuration(limit.dailyMs)} for the day: finish this game`
 						)
 					}
 					this.limitFirstCheck = false
@@ -1059,14 +1064,15 @@ class GameApp {
 					this.saveGameState()
 					overlay?.classList.remove("hidden")
 				}
-				const night = st.reason === "night"
+				const session = st.reason === "session"
+				overlay?.setAttribute("data-reason", st.reason)
 				const title = document.getElementById("limit-title")
-				if (title) title.textContent = night ? "Don Blocko is sleeping" : "Don Blocko is done for today"
+				if (title) title.textContent = session ? "Take a breather" : "That's plenty for today"
 				const msg = document.getElementById("limit-message")
 				if (msg)
-					msg.textContent = night
-						? "The board takes a break overnight. Get some sleep and come back fresh."
-						: `You've played your ${formatDuration(limit.dailyMs)} for today. Nice work.`
+					msg.textContent = session
+						? `That's ${formatDuration(limit.sessionMs)} in a row. Stretch, look away from the screen, come back\u00a0fresh.`
+						: `You've played ${formatDuration(limit.dailyMs)} in the last ${limit.windowText(true)}. Nice work.`
 				const time = document.getElementById("limit-reopen-time")
 				if (time) time.textContent = formatClock(st.reopenAt)
 				const inEl = document.getElementById("limit-reopen-in")
@@ -1082,16 +1088,16 @@ class GameApp {
 				this.limitLocked = false
 				overlay?.classList.add("hidden")
 			}
-			if (limit.enabled) {
-				const toCut = limit.msUntilCutoff(now)
-				if (limit.shouldWarn(now)) showToast(`${formatDuration(st.remainingMs)} of Don Blocko left today`)
-				else if (toCut <= limit.warnMs && toCut > limit.warnMs - 1500)
-					showToast(`Don Blocko closes for the night in ${formatDuration(toCut)}`)
-			}
+			if (limit.enabled && limit.shouldWarn(now))
+				showToast(
+					st.reason === "session"
+						? `${formatDuration(st.remainingMs)} left before a breather`
+						: `${formatDuration(st.remainingMs)} of Don Blocko left for the day`
+				)
 		}
 		this.limitCheck = check
 		// First check after the constructor finishes: locking needs the rest of the game set up
-		// (opening the app during the night lock crashed startup when this ran inline).
+		// (opening the app while locked crashed startup when this ran inline).
 		setTimeout(check, 0)
 		setInterval(check, 1000)
 		document.addEventListener("visibilitychange", check)

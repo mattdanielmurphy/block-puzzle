@@ -1519,7 +1519,7 @@ body.dev-mode {
     #lock-prompt.shown { animation: none; }
 }
 
-/* ── Daily play limit (2026-11-23) ─────────────────────────────────────────
+/* ── Play limits (2026-11-23, 2026-11-27) ─────────────────────────────────────────
    Colours reuse the app's own tokens: dark = the game's night palette,
    light = the same tokens flipped (text colour as the page, page colour as text). */
 #limit-overlay {
