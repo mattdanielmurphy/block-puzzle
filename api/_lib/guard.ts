@@ -7,10 +7,13 @@ import { sha256 } from "./crypto"
 let schemaReady: Promise<void> | null = null
 /** Adds the columns/tables the guards need (idempotent, once per server instance). */
 export function ensureSchema(): Promise<void> {
+	// Under a least-privilege login (see db/least-privilege.sql) these already exist and the DDL is
+	// refused with insufficient_privilege (42501); that's fine.
+	const ddl = (sql: string) => pool.query(sql).catch((e) => { if (e?.code !== "42501") throw e })
 	schemaReady ??= (async () => {
-		await pool.query(`ALTER TABLE ${dbName("players")} ADD COLUMN IF NOT EXISTS owner_hash text`)
-		await pool.query(`CREATE TABLE IF NOT EXISTS ${dbName("used_runs")} (run_id text PRIMARY KEY, used_at timestamptz NOT NULL DEFAULT now())`)
-		await pool.query(`CREATE TABLE IF NOT EXISTS ${dbName("rate_limits")} (bucket text NOT NULL, key text NOT NULL, window_start bigint NOT NULL, count int NOT NULL DEFAULT 0, PRIMARY KEY (bucket, key, window_start))`)
+		await ddl(`ALTER TABLE ${dbName("players")} ADD COLUMN IF NOT EXISTS owner_hash text`)
+		await ddl(`CREATE TABLE IF NOT EXISTS ${dbName("used_runs")} (run_id text PRIMARY KEY, used_at timestamptz NOT NULL DEFAULT now())`)
+		await ddl(`CREATE TABLE IF NOT EXISTS ${dbName("rate_limits")} (bucket text NOT NULL, key text NOT NULL, window_start bigint NOT NULL, count int NOT NULL DEFAULT 0, PRIMARY KEY (bucket, key, window_start))`)
 	})().catch((e) => {
 		schemaReady = null
 		throw e

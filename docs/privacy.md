@@ -1,6 +1,6 @@
 # Don Blocko privacy policy
 
-*Last updated 26 November 2026.*
+*Last updated 27 November 2026.*
 
 Don Blocko is a block puzzle game. It has no accounts, no ads and no in-app purchases, and it does not sell or share your data.
 
@@ -24,4 +24,8 @@ No tracking across other apps or websites, no advertising, no selling or sharing
 
 ## Removing your data
 
-Use the feedback button in TestFlight (or reply to the beta invitation) to ask for your leaderboard name and scores to be removed, and they will be deleted.
+Email [apps@slub.cc](mailto:apps@slub.cc) (or use the feedback button in TestFlight) to ask for your leaderboard name and scores to be removed, and they will be deleted.
+
+## Contact
+
+Questions about this policy: [apps@slub.cc](mailto:apps@slub.cc).
