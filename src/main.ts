@@ -197,6 +197,8 @@ class GameApp {
 	private gameOverActionsTimeout: any = null
 	private gameSeed: number | null = null
 	private runId: string | null = null
+	/** Server-signed token for this run (proves when it started); needed to post its score. */
+	private runToken: string | null = null
 	private scoreSubmitted: boolean = false // Flag to prevent duplicate submissions
 	private runInitialized: boolean = false // Prevent timer/start logic before the real run begins
 
@@ -462,6 +464,7 @@ class GameApp {
 		// Start Tutorial if not completed
 		if (!localStorage.getItem("bp_tutorial_completed")) {
 			this.tutorialManager.start()
+			void this.ensureRunToken()
 		} else if (!this.loadGameState()) {
 			// No saved state and tutorial already completed: start a fresh run
 			this.startNewRun()
@@ -490,7 +493,7 @@ class GameApp {
 			const resp = await this.apiFetch("/api/players/sync", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ name: playerName.trim() }),
+				body: JSON.stringify({ name: playerName.trim(), deviceKey: this.deviceKey() }),
 			})
 			if (resp.ok) {
 				const data = await resp.json()
@@ -550,6 +553,34 @@ class GameApp {
 		const el = document.getElementById("app-version")
 		if (el) {
 			el.textContent = `v${VERSION}`
+		}
+	}
+
+	/** Random key that marks this device as the owner of its leaderboard name (kept forever). */
+	private deviceKey(): string {
+		let key = localStorage.getItem("bp_device_key")
+		if (!key || !/^[A-Za-z0-9_-]{32,128}$/.test(key)) {
+			key = this.generateRunId() + this.generateRunId() // 64 hex chars
+			localStorage.setItem("bp_device_key", key)
+		}
+		return key
+	}
+
+	/** Asks the server to sign the current run (once per run); quietly retried at submit if offline. */
+	private async ensureRunToken(): Promise<string | null> {
+		const runId = this.runId
+		if (!runId) return null
+		if (this.runToken) return this.runToken
+		try {
+			const resp = await this.apiFetch(`/api/run/start?runId=${encodeURIComponent(runId)}`)
+			if (!resp.ok) return null
+			const data = await resp.json()
+			if (this.runId !== runId || typeof data.runToken !== "string") return null
+			this.runToken = data.runToken
+			this.saveGameState()
+			return this.runToken
+		} catch {
+			return null
 		}
 	}
 
@@ -1168,6 +1199,7 @@ class GameApp {
 			priorBestScore: this.priorBestScore,
 			highScoreNotificationShown: this.highScoreNotificationShown,
 			runId: this.runId!, // Save the current runId (assert non-null)
+			runToken: this.runToken,
 			scoreSubmitted: this.scoreSubmitted,
 			chillMode: this.chillMode,
 			streak: { s: this.streak, m: this.movesSinceClear, b: this.runBestStreak },
@@ -1199,6 +1231,8 @@ class GameApp {
 			this.priorBestScore = state.priorBestScore ?? this.engine.bestScore
 			this.highScoreNotificationShown = state.highScoreNotificationShown ?? false
 			this.runId = state.runId // Restore runId from saved state
+			this.runToken = (state as any).runToken ?? null
+			if (!this.runToken) void this.ensureRunToken()
 
 			// Restore scoreSubmitted from state OR check localStorage for redundancy
 			this.scoreSubmitted = state.scoreSubmitted ?? false
@@ -1409,6 +1443,8 @@ class GameApp {
 				name: name,
 				score: this.engine.score,
 				mode: this.chillMode ? "chill" : "normal",
+				runToken: await this.ensureRunToken(),
+				deviceKey: this.deviceKey(),
 			}
 
 			const response = await this.apiFetch("/api/leaderboard/submit", {
@@ -1516,7 +1552,12 @@ class GameApp {
 					jsonBody: data,
 					rawBodySnippet: rawBody ? rawBody.slice(0, 200) : null,
 				})
-				const errorMessage = data && typeof data === "object" && (data as any).error ? `Failed to submit score: ${(data as any).error}` : "Failed to submit score. You can try submitting again."
+				const errorMessage =
+					data && typeof data === "object" && typeof (data as any).message === "string"
+						? (data as any).message
+						: data && typeof data === "object" && (data as any).error
+							? `Failed to submit score: ${(data as any).error}`
+							: "Failed to submit score. You can try submitting again."
 				this.updateSubmissionUI("error", errorMessage)
 			}
 		} catch (e) {
@@ -2546,6 +2587,8 @@ class GameApp {
 		// Reset submission state and generate new runId/seed for the new run.
 		this.scoreSubmitted = false
 		this.runId = this.generateRunId()
+		this.runToken = null
+		void this.ensureRunToken()
 		this.gameSeed = this.generateSeed()
 
 		// Start the new run immediately with the generated seed.

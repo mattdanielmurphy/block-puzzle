@@ -4,6 +4,7 @@ import * as ip from "../_lib/ip"
 import * as rateLimit from "../_lib/rateLimit"
 import * as validation from "../_lib/validation"
 import { generateRunToken } from "../_lib/runToken"
+import { connectionIp } from "../_lib/guard"
 
 // `crypto` is a global in Node.js >= 15.0.0. Vercel's Node.js runtime for
 // Serverless Functions supports this.
@@ -23,7 +24,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 		return errorJson(res, 405, "METHOD_NOT_ALLOWED", "Use GET")
 	}
 
-	const clientIp = ip.getClientIp(req)
+	const clientIp = connectionIp(req)
 	{
 		const rl = await rateLimit.rateLimitFixedWindow({
 			bucket: "run_start",
@@ -40,7 +41,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 	const url = new URL(req.url || "", `http://${req.headers.host || "localhost"}`)
 	const seedParam = url.searchParams.get("seed")
 
-	const runId = generateRandomUuid()
+	// The client may name its own run id (it starts playing before this answers).
+	const runIdParam = url.searchParams.get("runId")
+	const runId = runIdParam && /^[A-Za-z0-9-]{16,64}$/.test(runIdParam) ? runIdParam : generateRandomUuid()
 	const seed = seedParam ? Number(seedParam) : generateRandomUint32()
 
 	if (!Number.isFinite(seed)) {

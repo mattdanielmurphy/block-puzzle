@@ -4,6 +4,7 @@ import * as validation from "../_lib/validation"
 
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { dbName, pool, connectionString } from "../_lib/db"
+import { checkOwner, ensureSchema, parseDeviceKey } from "../_lib/guard"
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
 	if (req.method !== "POST") return http.errorJson(res, 405, "METHOD_NOT_ALLOWED", "Use POST")
@@ -26,6 +27,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 	const name = nameV.value
 
 	try {
+		await ensureSchema()
 		const existingRes = await pool.query(`SELECT id, best_score, chill_best_score FROM ${dbName("players")} WHERE name = $1 LIMIT 1`, [name])
 		const existingPlayer = existingRes.rows.length > 0 ? existingRes.rows[0] : null
 
@@ -42,6 +44,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 				return http.errorJson(res, 500, "DATABASE_ERROR", "Could not sync player")
 			}
 		}
+
+		const own = await checkOwner(pool, playerId, parseDeviceKey(body?.deviceKey))
+		if (own.ok === false) return http.errorJson(res, 403, own.code, own.message)
 
 		await pool.query(`
 			INSERT INTO ${dbName("player_identities")} (player_id, ip_address, user_agent, last_seen)

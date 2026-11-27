@@ -5,12 +5,17 @@ import * as validation from "../_lib/validation"
 
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { dbName, pool, connectionString } from "../_lib/db"
+import { checkOwner, connectionIp, ensureSchema, parseDeviceKey, useRun } from "../_lib/guard"
+import { verifyRunToken } from "../_lib/runToken"
+import { checkScorePlausible } from "../_lib/plausibility"
 
 type SubmitBody = {
 	runId: unknown
 	name: unknown
 	score: unknown
 	mode: unknown
+	runToken: unknown
+	deviceKey: unknown
 }
 
 type SubmitResponse = {
@@ -49,12 +54,11 @@ export async function handler(req: VercelRequest, res: VercelResponse) {
 		console.log(`Submit: Client IP: ${clientIp}`)
 
 		// B) Rate limit
-		const submitRl = await rateLimit.rateLimitFixedWindow({
-			bucket: "submit",
-			ip: clientIp,
-			limit: validation.LIMITS.submitPerMinute,
-			windowSec: 60,
-		})
+		await ensureSchema()
+		const submitRl = await rateLimit.rateLimitMultiple([
+			{ bucket: "submit", ip: connectionIp(req), limit: validation.LIMITS.submitPerMinute, windowSec: 60 },
+			{ bucket: "submit_hour", ip: connectionIp(req), limit: 60, windowSec: 3600 },
+		])
 		if (submitRl.ok === false) {
 			console.log(`Submit: Rate limited for IP ${clientIp} on 'submit' bucket. Retry after ${submitRl.retryAfterSec}s.`)
 			res.setHeader("Retry-After", String(submitRl.retryAfterSec))
@@ -84,6 +88,18 @@ export async function handler(req: VercelRequest, res: VercelResponse) {
 			return http.errorJson(res, 400, "VALIDATION_ERROR", scoreV.message)
 		}
 
+		// D) The run must come with a server-signed token: proves when it started, and each run counts once.
+		const token = typeof body.runToken === "string" ? await verifyRunToken(body.runToken) : null
+		if (!token || token.runId !== runId) {
+			return http.errorJson(res, 403, "RUN_NOT_VERIFIED", "This game couldn't be verified, so its score can't go on the leaderboard.")
+		}
+		const plausible = checkScorePlausible(scoreV.value, token.iat, Date.now())
+		if (plausible.ok === false) {
+			console.log(`Submit: implausible score ${scoreV.value} for run ${runId} (${plausible.message})`)
+			return http.errorJson(res, 422, "SCORE_REJECTED", plausible.message)
+		}
+		const deviceKey = parseDeviceKey(body.deviceKey)
+
 		const mode = typeof body.mode === "string" ? body.mode : "normal"
 		const table = dbName(mode === "chill" ? "chill_scores" : "scores")
 		const trimFunction = dbName(mode === "chill" ? "trim_chill_scores" : "trim_verified_scores")
@@ -105,6 +121,21 @@ export async function handler(req: VercelRequest, res: VercelResponse) {
 				// Create new player record
 				const newPlayerRes = await client.query(`INSERT INTO ${dbName("players")} (name) VALUES ($1) RETURNING id`, [nameV.value])
 				playerId = newPlayerRes.rows[0].id
+			}
+
+			// E1.2) Only the device that owns this name may post under it
+			if (playerId) {
+				const own = await checkOwner(client, playerId, deviceKey)
+				if (own.ok === false) {
+					await client.query("ROLLBACK")
+					return http.errorJson(res, 403, own.code, own.message)
+				}
+			}
+
+			// E1.3) Each run can be submitted once (blocks replaying a token under another name)
+			if (!(await useRun(client, runId))) {
+				await client.query("ROLLBACK")
+				return http.errorJson(res, 409, "ALREADY_SUBMITTED", "This game was already submitted.")
 			}
 
 			// E1.5) Upsert identity if we have a playerId
