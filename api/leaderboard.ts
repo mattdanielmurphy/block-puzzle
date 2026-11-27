@@ -62,7 +62,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
 		const formattedVerified: VerifiedEntry[] = verified.map(v => ({
 			run_id: v.run_id,
-			name: v.name,
+			name: validation.displayName(v.name),
 			score: v.score,
 			createdAt: v.created_at.toISOString(),
 		}))

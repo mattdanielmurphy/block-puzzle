@@ -1,3 +1,16 @@
+import { RegExpMatcher, englishDataset, englishRecommendedTransformers } from "obscenity"
+
+// Leaderboard names are public, so offensive ones are refused on submit and masked on display
+// (App Review guideline 1.2: user-generated content needs filtering).
+const profanity = new RegExpMatcher({ ...englishDataset.build(), ...englishRecommendedTransformers })
+export function isOffensive(name: string): boolean {
+	return profanity.hasMatch(name)
+}
+/** Name safe to show on a public board: offensive names (e.g. from before the filter) become "Player". */
+export function displayName(name: string): string {
+	return isOffensive(name) ? "Player" : name
+}
+
 export const LIMITS = {
 	nameMinLength: 1,
 	nameMaxLength: 20,
@@ -20,6 +33,9 @@ export function validateName(name: unknown): ValidationResult<string> {
 	const trimmed = name.trim()
 	if (trimmed.length < LIMITS.nameMinLength || trimmed.length > LIMITS.nameMaxLength) {
 		return { ok: false, message: `Name must be between ${LIMITS.nameMinLength} and ${LIMITS.nameMaxLength} characters.` }
+	}
+	if (isOffensive(trimmed)) {
+		return { ok: false, message: "Please pick a different name." }
 	}
 	return { ok: true, value: trimmed }
 }

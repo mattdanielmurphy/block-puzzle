@@ -46,7 +46,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 	try {
 		// 1. Get Top Score
 		const { rows: topData } = await pool.query(`SELECT name, score FROM ${table} ORDER BY score DESC LIMIT 1`)
-		const topScore = topData.length > 0 ? { ...topData[0], rank: 1 } : null
+		const topScore = topData.length > 0 ? { ...topData[0], name: validation.displayName(topData[0].name), rank: 1 } : null
 
 		if (playerScore === null) {
 			return json(res, 200, { ok: true, topScore, playerRank: 0, surrounding: [], isPersonalBest: false })
@@ -79,10 +79,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
 		const surrounding: VerifiedEntry[] = []
 		if (aboveData && aboveData.length > 0) {
-			surrounding.push({ name: aboveData[0].name, score: aboveData[0].score, rank: playerRank - 1 })
+			surrounding.push({ name: validation.displayName(aboveData[0].name), score: aboveData[0].score, rank: playerRank - 1 })
 		}
 		if (belowData && belowData.length > 0) {
-			surrounding.push({ name: belowData[0].name, score: belowData[0].score, rank: playerRank + 1 })
+			surrounding.push({ name: validation.displayName(belowData[0].name), score: belowData[0].score, rank: playerRank + 1 })
 		}
 
 		const resp: ContextualLeaderboardResponse = {
