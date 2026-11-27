@@ -6,6 +6,16 @@
 		<title>Don Blocko</title>
 		<meta name="description" content="Block Sudoku Puzzle Game" />
 		<link rel="stylesheet" href="/styles.css" />
+		<!-- App Shack's public TestFlight build (window.superapp.public, spacetime docs/public-testflight.md): strangers play
+		     offline only. No leaderboard, no player names, no IP lookup (shared names need report/block and a name can be
+		     taken over today). src/main.ts PUBLIC does the rest. -->
+		<script>if (window.superapp && window.superapp.public === true) document.documentElement.classList.add("appshack-public")</script>
+		<style>
+			.appshack-public #leaderboard-header-btn, .appshack-public #mini-leaderboard-container,
+			.appshack-public #leaderboard-status-container, .appshack-public #player-name-missing-container,
+			.appshack-public #player-suggestions-container, .appshack-public #player-name-submission-container,
+			.appshack-public #submission-status-message, .appshack-public #leaderboard-modal { display: none !important; }
+		</style>
 		<link rel="manifest" href="/manifest.webmanifest" />
 		<meta name="theme-color" content="#050815" />
 		<meta name="apple-mobile-web-app-capable" content="yes" />

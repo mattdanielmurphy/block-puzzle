@@ -29,6 +29,10 @@ if (import.meta.env.DEV && "serviceWorker" in navigator) {
 	})
 }
 
+/** App Shack's public TestFlight build (window.superapp.public): offline play only, no leaderboard, names, IP lookup or
+ *  analytics (index.html hides the leaderboard UI). */
+const PUBLIC = (window as any).superapp?.public === true
+
 const GAME_OVER_QUOTES = [
 	"A valiant effort.",
 	"It's about the friends you made along the way.",
@@ -318,6 +322,7 @@ class GameApp {
 
 		// Fetch public IP for robust identification (preferring IPv6)
 		const fetchIp = async () => {
+			if (PUBLIC) return
 			try {
 				// Try IPv6 specifically first
 				let resp = await fetch("https://api6.ipify.org?format=json").catch(() => null)
@@ -524,6 +529,8 @@ class GameApp {
 	 * Wrapper for fetch that injects dev headers if needed
 	 */
 	private async apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+		// App Shack's public build: the game never talks to the server (no leaderboard, no names), see PUBLIC.
+		if (PUBLIC) throw new TypeError("offline (App Shack public build)")
 		if (this.clientPublicIp) {
 			init = init || {}
 			const headers = new Headers(init.headers || {})
@@ -2560,7 +2567,7 @@ class GameApp {
 
 // Boot
 window.onload = () => {
-	inject()
+	if (!PUBLIC) inject()
 	if (window.location.pathname === "/simulate") {
 		const canvas = document.getElementById("game-canvas") as HTMLCanvasElement
 		new Simulator(canvas)

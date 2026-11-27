@@ -53,7 +53,11 @@ export class PlayLimit {
 	}
 
 	get enabled() {
-		return store(K_ON) !== "false"
+		// App Shack's public build: off unless switched on in Settings (a stranger or Apple's reviewer playing at night
+		// or for a while would think the game is broken).
+		const v = store(K_ON)
+		if ((globalThis as any).superapp?.public === true) return v === "true"
+		return v !== "false"
 	}
 	set enabled(v: boolean) {
 		store(K_ON, String(v))
