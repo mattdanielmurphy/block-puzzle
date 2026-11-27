@@ -2,7 +2,7 @@
 
 *Last updated 27 November 2026.*
 
-Don Blocko is a block puzzle game. It has no accounts, no ads and no in-app purchases, and it does not sell or share your data.
+Don Blocko is a block puzzle game. It has no accounts and no in-app purchases, and it does not sell or share your data.
 
 ## What stays on your device
 
@@ -18,9 +18,13 @@ Only if you choose to put a score on the public leaderboard:
 
 The web version also uses [Vercel Web Analytics](https://vercel.com/docs/analytics/privacy-policy), which counts page visits without cookies and without identifying you.
 
+## Promotions
+
+Don Blocko may show short, skippable promotions for other Slub apps and projects. They are made and shown by us, with no ad networks: nothing about you is collected or shared to choose or measure them.
+
 ## What we don't do
 
-No tracking across other apps or websites, no advertising, no selling or sharing data with anyone.
+No tracking across other apps or websites, no third-party ad networks, no selling or sharing data with anyone.
 
 ## Removing your data
 
